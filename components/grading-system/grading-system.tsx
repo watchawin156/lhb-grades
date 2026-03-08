@@ -704,63 +704,323 @@ export default function GradingSystem() {
         ]);
       }
 
-      // 2. Create PDF
+      // 2. Create PDF Document (2 pages)
       const pdfDoc = await PDFDocument.create();
       pdfDoc.registerFontkit(fontkit);
-      const customFont = await pdfDoc.embedFont(fontBytes);
-      const customFontBold = await pdfDoc.embedFont(fontBoldBytes);
-      const page = pdfDoc.addPage([595.28, 841.89]);
-      const { width, height } = page.getSize();
-      const margin = 50;
+      const fReg = await pdfDoc.embedFont(fontBytes);
+      const fBold = await pdfDoc.embedFont(fontBoldBytes);
 
-      // 3. Header
-      page.drawText('รายงานผลการเรียนรายบุคคล (ปพ.1)', { x: width / 2 - 130, y: height - 60, size: 22, font: customFontBold, color: rgb(0, 0, 0) });
-      page.drawText(`ชื่อ-นามสกุล: ${student.name}`, { x: margin, y: height - 100, size: 16, font: customFont, color: rgb(0, 0, 0) });
-      page.drawText(`ชั้น: ${student.class.split('/')[0]}`, { x: margin, y: height - 120, size: 16, font: customFont, color: rgb(0, 0, 0) });
-      page.drawText(`เลขประจำตัว: ${student.code}`, { x: width - 200, y: height - 100, size: 16, font: customFont, color: rgb(0, 0, 0) });
-      page.drawText(`ปีการศึกษา: ${academicYear}`, { x: width - 200, y: height - 120, size: 16, font: customFont, color: rgb(0, 0, 0) });
+      const W = 595.28;
+      const H = 841.89;
+      const black = rgb(0, 0, 0);
+      const gray = rgb(0.5, 0.5, 0.5);
 
-      // 4. Data Processing
+      // ── Helper functions ──────────────────────────────────────────
+      const txt = (page: any, text: string, x: number, y: number, size: number, bold = false, color = black) => {
+        page.drawText(String(text), { x, y, size, font: bold ? fBold : fReg, color });
+      };
+      const line = (page: any, x1: number, y1: number, x2: number, y2: number, thickness = 0.5) => {
+        page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness, color: black });
+      };
+      const rect = (page: any, x: number, y: number, w: number, h: number, thickness = 0.5) => {
+        page.drawRectangle({ x, y, width: w, height: h, borderWidth: thickness, borderColor: black, color: rgb(1, 1, 1) });
+      };
+
+      // ── Process Subject Data ──────────────────────────────────────
+      const subjectsBySemAndYear: Map<string, any> = new Map();
+      // Group subjects: key = "year-sem-code"
+      const allSubjectsForStudent = subjects;
       const subjectGroups: Record<string, any> = {};
-      subjects.forEach(sub => {
+      allSubjectsForStudent.forEach(sub => {
         const key = sub.code || sub.name;
-        if (!subjectGroups[key]) subjectGroups[key] = { code: sub.code, name: sub.name, type: sub.type || 'พื้นฐาน', sem1: null, sem2: null, credit: sub.credit || 1 };
+        if (!subjectGroups[key]) {
+          subjectGroups[key] = { code: sub.code, name: sub.name, type: sub.type || 'พื้นฐาน', sem1: null, sem2: null, credit: sub.credit || 1 };
+        }
         if (sub.semester === 1) subjectGroups[key].sem1 = sub;
         if (sub.semester === 2) subjectGroups[key].sem2 = sub;
       });
+
       const sortedSubjs = Object.values(subjectGroups).sort((a: any, b: any) => {
         const typeOrder: Record<string, number> = { 'พื้นฐาน': 1, 'เพิ่มเติม': 2, 'กิจกรรม': 3 };
-        return (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99) || (a.code || "").localeCompare(b.code || "");
+        return (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99) || (a.code || '').localeCompare(b.code || '');
       });
 
-      // 5. Table Rendering
-      const tableTop = height - 160;
-      const colWidths = [30, 180, 60, 50, 50, 50, 40, 40];
-      const colX = [margin];
-      colWidths.forEach((w, i) => colX.push(colX[i] + w));
+      const academicSubjs = sortedSubjs.filter((s: any) => s.type !== 'กิจกรรม');
+      const activitySubjs = sortedSubjs.filter((s: any) => s.type === 'กิจกรรม');
 
-      const drawRow = (y: number, texts: string[], isBold = false) => {
-        const font = isBold ? customFontBold : customFont;
-        texts.forEach((text, i) => page.drawText(text, { x: colX[i] + 5, y: y + 5, size: 12, font, color: rgb(0, 0, 0) }));
-        page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
-      };
-
-      page.drawLine({ start: { x: margin, y: tableTop + 25 }, end: { x: width - margin, y: tableTop + 25 }, thickness: 1, color: rgb(0, 0, 0) });
-      drawRow(tableTop, ['ที่', 'รายวิชา', 'ประเภท', 'นก.', 'เทอม 1', 'เทอม 2', 'รวม', 'เกรด'], true);
-
-      let currentY = tableTop - 25;
-      sortedSubjs.forEach((sub: any, idx) => {
+      const getGrade = (sub: any): string => {
         const s1 = sub.sem1 ? getScore(student.id, sub.sem1.id) : null;
         const s2 = sub.sem2 ? getScore(student.id, sub.sem2.id) : null;
-        const totalGot = (s1 || 0) + (s2 || 0);
-        const totalMax = (sub.sem1?.maxScore || 0) + (sub.sem2?.maxScore || 0);
-        const percent = totalMax > 0 ? Math.round((totalGot / totalMax) * 100) : 0;
-        const grade = sub.type === 'กิจกรรม' ? (totalMax > 0 ? (percent >= 50 ? 'ผ' : 'มผ') : '-') : (totalMax > 0 ? calculateGrade(percent) : '-');
-        drawRow(currentY, [(idx + 1).toString(), sub.name.substring(0, 30), sub.type, (sub.credit || 1).toString(), s1 !== null ? s1.toString() : '-', s2 !== null ? s2.toString() : '-', totalMax > 0 ? percent.toString() : '-', grade]);
-        currentY -= 25;
+        const got = (s1 || 0) + (s2 || 0);
+        const max = (sub.sem1?.maxScore || 0) + (sub.sem2?.maxScore || 0);
+        if (max === 0) return '-';
+        const pct = Math.round((got / max) * 100);
+        if (sub.type === 'กิจกรรม') return pct >= 50 ? 'ผ' : 'มผ';
+        return calculateGrade(pct);
+      };
+
+      const getTotalHrs = (sub: any): number => {
+        return (sub.sem1?.maxScore || 0) + (sub.sem2?.maxScore || 0);
+      };
+
+      // ── Compute GPA ───────────────────────────────────────────────
+      let totalGradePoints = 0;
+      let gradedCount = 0;
+      academicSubjs.forEach((sub: any) => {
+        const g = parseFloat(getGrade(sub));
+        if (!isNaN(g)) { totalGradePoints += g; gradedCount++; }
+      });
+      const gpa = gradedCount > 0 ? (totalGradePoints / gradedCount).toFixed(2) : '-';
+
+      // ═══════════════════════════════════════════════════════════════
+      // PAGE 1
+      // ═══════════════════════════════════════════════════════════════
+      const p1 = pdfDoc.addPage([W, H]);
+      const mL = 28;  // left margin
+      const mR = W - 28; // right margin
+      const mT = H - 20; // top y
+
+      // ── School Info Block ─────────────────────────────────────────
+      let y = mT;
+      txt(p1, 'โรงเรียน  บ้านละหอกตะแบง', mL, y - 14, 13, false);
+      txt(p1, 'สังกัด  สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน', mL, y - 28, 12, false);
+      txt(p1, 'ตำบล/แขวง  ปราสาท', mL, y - 42, 12, false);
+      txt(p1, 'อำเภอ/เขต  บ้านกรวด', mL, y - 56, 12, false);
+      txt(p1, 'จังหวัด  บุรีรัมย์', mL, y - 70, 12, false);
+      txt(p1, 'สำนักงานเขตพื้นที่การศึกษา  ประถมศึกษาบุรีรัมย์ เขต 2', mL, y - 84, 12, false);
+      txt(p1, `วันเข้าเรียน  -`, mL, y - 98, 12, false);
+      txt(p1, `โรงเรียนเดิม  -`, mL, y - 112, 12, false);
+      txt(p1, `จังหวัด  -`, mL, y - 126, 12, false);
+      txt(p1, `ชั้นเรียนสุดท้าย  -`, mL, y - 140, 12, false);
+
+      // Box: student info (right side)
+      const bx = 330;
+      const bw = 235;
+      rect(p1, bx, y - 148, bw, 136);
+      txt(p1, `ชื่อ  ${student.name}`, bx + 5, y - 24, 12, false);
+      txt(p1, `ชื่อสกุล  ${student.class}`, bx + 5, y - 38, 12, false);
+      txt(p1, `เลขประจำตัวนักเรียน  ${student.code}`, bx + 5, y - 52, 12, false);
+      txt(p1, `เลขประจำตัวประชาชน  -`, bx + 5, y - 66, 12, false);
+      txt(p1, `เกิดวันที่  -  เดือน  -  พ.ศ.  -`, bx + 5, y - 80, 12, false);
+      txt(p1, `เพศ  -   สัญชาติ  -   ศาสนา  -`, bx + 5, y - 94, 12, false);
+      txt(p1, `ชื่อ-ชื่อสกุลบิดา  -`, bx + 5, y - 108, 12, false);
+      txt(p1, `ชื่อ-ชื่อสกุลมารดา  -`, bx + 5, y - 122, 12, false);
+
+      // ── Section Title: ผลการเรียนรายวิชา ─────────────────────────
+      const secY = mT - 162;
+      txt(p1, 'ผลการเรียนรายวิชา', W / 2 - 50, secY, 14, true);
+
+      // ── 3-Column Table Header ──────────────────────────────────────
+      const tY = secY - 15; // top of table header
+      const tH = 16; // row height
+      const tableBottom = 40;
+
+      // Column layout: 3 panels side by side
+      // Each panel: [รหัส/รายวิชา=wide] [เวลา=30] [ผล=25]
+      const panelW = (mR - mL) / 3;
+      const subColWide = panelW - 58; // subject name width
+      const subColHr = 30;
+      const subColGd = 28;
+
+      const panels = [0, 1, 2].map(i => {
+        const px = mL + i * panelW;
+        return {
+          x: px,
+          nameX: px,
+          hrX: px + subColWide,
+          gdX: px + subColWide + subColHr,
+          rightX: px + panelW,
+        };
       });
 
-      colX.forEach(x => page.drawLine({ start: { x, y: tableTop + 25 }, end: { x, y: currentY + 25 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) }));
+      // Draw table outer border + column headers
+      const tableTopY = tY;
+      rect(p1, mL, tableBottom, mR - mL, tableTopY - tableBottom);
+
+      // Header row
+      const hRowH = 28;
+      // Draw 3 vertical dividers between panels
+      panels.forEach((p, i) => {
+        if (i > 0) line(p1, p.x, tableBottom, p.x, tableTopY);
+        // sub-column dividers
+        line(p1, p.hrX, tableBottom, p.hrX, tableTopY);
+        line(p1, p.gdX, tableBottom, p.gdX, tableTopY);
+
+        // Column headers (rotated-style: just draw small)
+        txt(p1, 'รหัส/รายวิชา', p.nameX + 3, tableTopY - 13, 9, true);
+        txt(p1, 'เวลา', p.hrX + 2, tableTopY - 8, 8, true);
+        txt(p1, '(ชม.)', p.hrX + 1, tableTopY - 16, 8, true);
+        txt(p1, 'ผล', p.gdX + 5, tableTopY - 8, 8, true);
+        txt(p1, 'เรียน', p.gdX + 3, tableTopY - 16, 8, true);
+      });
+      line(p1, mL, tableTopY - hRowH, mR, tableTopY - hRowH, 0.5);
+
+      // ── Fill table with academic subjects ─────────────────────────
+      let rowY = tableTopY - hRowH - 1;
+      const rowH = 13; // row height
+      const availableH = tableTopY - hRowH - tableBottom;
+      const maxRows = Math.floor(availableH / rowH);
+
+      // Split subjects into 3 groups for 3 columns
+      // Group by year bucket: column 0 = early years, col 1 = mid, col 2 = late
+      // Since we don't have multi-year data currently, put subjects in sequential 3-panel layout
+      const colSize = Math.ceil(academicSubjs.length / 3);
+      const panel0Subjs = academicSubjs.slice(0, colSize);
+      const panel1Subjs = academicSubjs.slice(colSize, colSize * 2);
+      const panel2Subjs = academicSubjs.slice(colSize * 2);
+
+      const drawSubjectRows = (panelSubjs: any[], panelIdx: number) => {
+        let ry = rowY;
+        const p = panels[panelIdx];
+        panelSubjs.forEach((sub: any) => {
+          if (ry < tableBottom + rowH) return;
+          const grade = getGrade(sub);
+          const hrs = getTotalHrs(sub);
+          // Type header (bold when type changes)
+          const nameStr = `${sub.code || ''} ${sub.name}`.trim();
+          const displayName = nameStr.length > 22 ? nameStr.substring(0, 21) + '…' : nameStr;
+          txt(p1, displayName, p.nameX + 2, ry, 8.5, false);
+          if (hrs > 0) txt(p1, hrs.toString(), p.hrX + 4, ry, 8.5, false);
+          txt(p1, grade, p.gdX + 6, ry, 8.5, false);
+          line(p1, p.nameX, ry - 2, p.rightX, ry - 2, 0.3);
+          ry -= rowH;
+        });
+      };
+
+      drawSubjectRows(panel0Subjs, 0);
+      drawSubjectRows(panel1Subjs, 1);
+      drawSubjectRows(panel2Subjs, 2);
+
+      // ═══════════════════════════════════════════════════════════════
+      // PAGE 2
+      // ═══════════════════════════════════════════════════════════════
+      const p2 = pdfDoc.addPage([W, H]);
+      let y2 = H - 30;
+
+      // ── Section Title: ผลการประเมินกิจกรรมพัฒนาผู้เรียน ─────────
+      txt(p2, 'ผลการประเมินกิจกรรมพัฒนาผู้เรียน', W / 2 - 80, y2, 14, true);
+
+      // Activity Table (same 3-panel layout, narrower)
+      const actTableTopY = y2 - 15;
+      const actTableH = Math.min(activitySubjs.length * 13 + 30, 180);
+      const actTableBot = actTableTopY - actTableH;
+
+      rect(p2, mL, actTableBot, mR - mL, actTableH);
+      panels.forEach((p, i) => {
+        if (i > 0) line(p2, p.x, actTableBot, p.x, actTableTopY);
+        line(p2, p.hrX, actTableBot, p.hrX, actTableTopY);
+        line(p2, p.gdX, actTableBot, p.gdX, actTableTopY);
+        txt(p2, 'กิจกรรม', p.nameX + 3, actTableTopY - 13, 9, true);
+        txt(p2, 'เวลา', p.hrX + 2, actTableTopY - 8, 8, true);
+        txt(p2, '(ชม.)', p.hrX + 1, actTableTopY - 16, 8, true);
+        txt(p2, 'ผล', p.gdX + 5, actTableTopY - 8, 8, true);
+        txt(p2, 'ประเมิน', p.gdX + 1, actTableTopY - 16, 7, true);
+      });
+      line(p2, mL, actTableTopY - hRowH, mR, actTableTopY - hRowH, 0.5);
+
+      const actColSize = Math.ceil(activitySubjs.length / 3);
+      [0, 1, 2].forEach(pi => {
+        const pSubjs = activitySubjs.slice(pi * actColSize, (pi + 1) * actColSize);
+        let ry = actTableTopY - hRowH - 1;
+        pSubjs.forEach((sub: any) => {
+          const p = panels[pi];
+          const grade = getGrade(sub);
+          const hrs = getTotalHrs(sub);
+          txt(p2, sub.name.substring(0, 22), p.nameX + 2, ry, 8.5, false);
+          if (hrs > 0) txt(p2, hrs.toString(), p.hrX + 4, ry, 8.5, false);
+          txt(p2, grade, p.gdX + 6, ry, 8.5, false);
+          line(p2, p.nameX, ry - 2, p.rightX, ry - 2, 0.3);
+          ry -= 13;
+        });
+      });
+
+      // ── Summary Section ──────────────────────────────────────────
+      y2 = actTableBot - 15;
+
+      // สรุปผลการประเมิน (left box)
+      const sumBoxW = 220;
+      const sumBoxH = 100;
+      rect(p2, mL, y2 - sumBoxH, sumBoxW, sumBoxH);
+      txt(p2, 'สรุปผลการประเมิน', mL + sumBoxW / 2 - 45, y2 - 10, 10, true);
+      txt(p2, '1. ผลการประเมินรายวิชาพื้นฐาน', mL + 3, y2 - 25, 9, false);
+      txt(p2, 'ได้  ผ่านทุกรายวิชา', mL + 130, y2 - 25, 9, false);
+      txt(p2, '2. ผลการประเมินการอ่าน คิดวิเคราะห์และเขียน', mL + 3, y2 - 40, 9, false);
+      txt(p2, 'ได้  ดีเยี่ยม', mL + 130, y2 - 40, 9, false);
+      txt(p2, '3. ผลการประเมินคุณลักษณะอันพึงประสงค์', mL + 3, y2 - 55, 9, false);
+      txt(p2, 'ได้  ดีเยี่ยม', mL + 130, y2 - 55, 9, false);
+      txt(p2, '4. ผลการประเมินกิจกรรมพัฒนาผู้เรียน', mL + 3, y2 - 70, 9, false);
+      txt(p2, 'ได้  ผ่าน', mL + 130, y2 - 70, 9, false);
+      txt(p2, `วันอนุมัติจบ  -`, mL + 3, y2 - 90, 9, false);
+
+      // ผลการตัดสิน (middle box)
+      const midBoxX = mL + sumBoxW + 5;
+      const midBoxW = 100;
+      rect(p2, midBoxX, y2 - sumBoxH, midBoxW, sumBoxH);
+      txt(p2, 'ผลการตัดสิน', midBoxX + 10, y2 - 10, 9, true);
+      txt(p2, 'ผ่าน', midBoxX + 30, y2 - 25, 9, false);
+      txt(p2, 'ผ่าน', midBoxX + 30, y2 - 40, 9, false);
+      txt(p2, 'ผ่าน', midBoxX + 30, y2 - 55, 9, false);
+      txt(p2, 'ผ่าน', midBoxX + 30, y2 - 70, 9, false);
+
+      // GPA summary (right box)
+      const gpaBoxX = midBoxX + midBoxW + 5;
+      const gpaBoxW = mR - gpaBoxX;
+      const gpaBoxH = sumBoxH;
+      rect(p2, gpaBoxX, y2 - gpaBoxH, gpaBoxW, gpaBoxH);
+      txt(p2, 'กลุ่มสาระการเรียนรู้/', gpaBoxX + 3, y2 - 10, 8, true);
+      txt(p2, 'การศึกษาค้นคว้าด้วยตนเอง', gpaBoxX + 3, y2 - 20, 8, true);
+      txt(p2, 'หน่วย/ชม.', gpaBoxX + gpaBoxW - 55, y2 - 15, 7, true);
+      txt(p2, 'ผล', gpaBoxX + gpaBoxW - 25, y2 - 15, 7, true);
+      line(p2, gpaBoxX, y2 - 24, gpaBoxX + gpaBoxW, y2 - 24, 0.5);
+
+      // Subjects group summary
+      const subjectNames = [
+        'ภาษาไทย', 'คณิตศาสตร์', 'วิทยาศาสตร์และเทคโนโลยี',
+        'สังคมศึกษา ศาสนาและวัฒนธรรม', 'สุขศึกษาและพลศึกษา',
+        'ศิลปะ', 'การงานอาชีพ', 'ภาษาต่างประเทศ'
+      ];
+      subjectNames.forEach((sn, i) => {
+        const ry = y2 - 30 - i * 9;
+        txt(p2, sn.length > 20 ? sn.substring(0, 19) + '…' : sn, gpaBoxX + 3, ry, 7.5, false);
+        // find matching subject
+        const matched = academicSubjs.find((s: any) => s.name.includes(sn.split(' ')[0]));
+        const subGrade = matched ? getGrade(matched) : '-';
+        txt(p2, '-', gpaBoxX + gpaBoxW - 50, ry, 7.5, false);
+        txt(p2, subGrade, gpaBoxX + gpaBoxW - 20, ry, 7.5, false);
+      });
+
+      // ── O-NET Section ─────────────────────────────────────────────
+      y2 = y2 - sumBoxH - 15;
+      txt(p2, 'ผลการทดสอบระดับชาติ', W / 2 - 50, y2, 11, true);
+      y2 -= 15;
+      const onetBoxH = 70;
+      rect(p2, mL, y2 - onetBoxH, (mR - mL) / 2 - 5, onetBoxH);
+      txt(p2, 'O-NET (ชั้นประถมศึกษาปีที่ 6)', mL + 5, y2 - 10, 9, true);
+      txt(p2, 'ภาษาไทย  ได้  -', mL + 5, y2 - 25, 9, false);
+      txt(p2, 'คณิตศาสตร์  ได้  -', mL + 5, y2 - 37, 9, false);
+      txt(p2, 'วิทยาศาสตร์  ได้  -', mL + 5, y2 - 49, 9, false);
+      txt(p2, 'ภาษาอังกฤษ  ได้  -', mL + (mR - mL) / 4, y2 - 25, 9, false);
+
+      // GPA 3-year
+      const gpa3BoxX = mL + (mR - mL) / 2 + 5;
+      const gpa3BoxW = (mR - mL) / 2 - 5;
+      rect(p2, gpa3BoxX, y2 - onetBoxH, gpa3BoxW, onetBoxH);
+      txt(p2, `ผลการเรียนเฉลี่ยตลอด 3 ปี (ป.4-6)  ${gpa}`, gpa3BoxX + 5, y2 - 15, 9, false);
+      txt(p2, `รวมหน่วยกิต/ชั่วโมง: -`, gpa3BoxX + 5, y2 - 30, 9, false);
+
+      // ── Signature section ─────────────────────────────────────────
+      y2 = y2 - onetBoxH - 20;
+      txt(p2, `ตัดส่วนผลการเรียนและผลการทดสอบระดับชาติ`, mL, y2, 9, false);
+      y2 -= 30;
+      // Photo box
+      rect(p2, mL, y2 - 60, 50, 60);
+      txt(p2, 'รูปถ่าย', mL + 10, y2 - 30, 9, false);
+      txt(p2, 'ลงชื่อ ...............................................', mL + 60, y2 - 20, 10, false);
+      txt(p2, '(นายทะเบียน)', mL + 100, y2 - 35, 9, false);
+      txt(p2, 'ลงชื่อ ...............................................', mR - 200, y2 - 20, 10, false);
+      txt(p2, '(ผู้อำนวยการโรงเรียน)', mR - 190, y2 - 35, 9, false);
+
+      // ── Save & Preview ────────────────────────────────────────────
       const pdfBase64 = await pdfDoc.saveAsBase64({ dataUri: true });
       setPdfPreviewUrl(pdfBase64);
       setIsGeneratingPDF(false);
