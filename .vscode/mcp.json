@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "switchboard": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/.switchboard/MCP/mcp-server.js"
+      ]
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import type {Metadata} from 'next';
+import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 
@@ -9,10 +9,10 @@ export const metadata: Metadata = {
   description: 'ระบบบันทึกคะแนนและตัดเกรดอัตโนมัติ รองรับการนำเข้า/ส่งออกไฟล์ CSV ภาษาไทย',
 };
 
-export default function RootLayout({children}: {children: React.ReactNode}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="th">
-      <body className={inter.className} suppressHydrationWarning>{children}</body>
+    <html lang="th" suppressHydrationWarning>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }

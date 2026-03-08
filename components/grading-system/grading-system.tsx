@@ -18,10 +18,13 @@ import {
   FileText,
   Menu,
   Settings,
-  FileBarChart
+  FileBarChart,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import * as pdfMake from 'pdfmake/build/pdfmake';
 import * as pdfFonts from 'pdfmake/build/vfs_fonts';
 import { TDocumentDefinitions } from 'pdfmake/interfaces';
@@ -107,31 +110,89 @@ export default function GradingSystem() {
   const [isClearDataModalOpen, setIsClearDataModalOpen] = useState(false);
   const [clearDataCode, setClearDataCode] = useState('');
   const [isStandardSubjectModalOpen, setIsStandardSubjectModalOpen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
-  // Load data from localStorage on mount
+  // Theme Handling
   useEffect(() => {
-    const loadedStudents = localStorage.getItem('grading_students');
-    const loadedSubjects = localStorage.getItem('grading_subjects');
-    const loadedScores = localStorage.getItem('grading_scores');
-    const loadedYearSettings = localStorage.getItem('grading_year_settings');
-
-    if (loadedStudents) setStudents(JSON.parse(loadedStudents));
-    if (loadedSubjects) setSubjects(JSON.parse(loadedSubjects));
-    if (loadedScores) setScores(JSON.parse(loadedScores));
-    if (loadedYearSettings) {
-      const settings = JSON.parse(loadedYearSettings);
-      setDefaultAcademicYear(settings.defaultYear);
-      setLockedYear(settings.lockedYear);
-      setAcademicYear(settings.defaultYear);
+    const savedTheme = localStorage.getItem('grading_theme');
+    // Default to dark if no preference is saved
+    if (savedTheme === 'dark' || !savedTheme) {
+      setIsDarkMode(true);
+      document.documentElement.classList.add('dark');
+      // If no theme was saved yet, save 'dark' as default preference
+      if (!savedTheme) localStorage.setItem('grading_theme', 'dark');
+    } else {
+      setIsDarkMode(false);
+      document.documentElement.classList.remove('dark');
     }
-    setIsLoaded(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Save data to localStorage whenever it changes
+  const toggleTheme = () => {
+    setIsDarkMode(prev => {
+      const newTheme = !prev;
+      if (newTheme) {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('grading_theme', 'dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('grading_theme', 'light');
+      }
+      return newTheme;
+    });
+  };
+
+  // Load data from localStorage on mount - Updated for Real-time Sync
+  useEffect(() => {
+    const initData = async () => {
+      const loadedYearSettings = localStorage.getItem('grading_year_settings');
+      if (loadedYearSettings) {
+        const settings = JSON.parse(loadedYearSettings);
+        setDefaultAcademicYear(settings.defaultYear);
+        setLockedYear(settings.lockedYear);
+        setAcademicYear(settings.defaultYear);
+      }
+
+      // Try to load from Cloud first for real-time
+      try {
+        const response = await fetch('/api/data');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.students?.length || data.subjects?.length || data.scores?.length) {
+            setStudents(data.students || []);
+            setSubjects(data.subjects || []);
+            setScores(data.scores || []);
+            setLastSynced(new Date());
+          } else {
+            // If cloud is empty, load from localStorage
+            const loadedStudents = localStorage.getItem('grading_students');
+            const loadedSubjects = localStorage.getItem('grading_subjects');
+            const loadedScores = localStorage.getItem('grading_scores');
+            if (loadedStudents) setStudents(JSON.parse(loadedStudents));
+            if (loadedSubjects) setSubjects(JSON.parse(loadedSubjects));
+            if (loadedScores) setScores(JSON.parse(loadedScores));
+          }
+        }
+      } catch (e) {
+        // Fallback to localStorage if offline
+        const loadedStudents = localStorage.getItem('grading_students');
+        const loadedSubjects = localStorage.getItem('grading_subjects');
+        const loadedScores = localStorage.getItem('grading_scores');
+        if (loadedStudents) setStudents(JSON.parse(loadedStudents));
+        if (loadedSubjects) setSubjects(JSON.parse(loadedSubjects));
+        if (loadedScores) setScores(JSON.parse(loadedScores));
+      }
+      setIsLoaded(true);
+    };
+
+    initData();
+  }, []);
+
+  // Real-time Auto-save with Debounce
   useEffect(() => {
     if (isLoaded) {
       setIsSaving(true);
+
+      // Save to localStorage immediately
       localStorage.setItem('grading_students', JSON.stringify(students));
       localStorage.setItem('grading_subjects', JSON.stringify(subjects));
       localStorage.setItem('grading_scores', JSON.stringify(scores));
@@ -140,10 +201,22 @@ export default function GradingSystem() {
         lockedYear: lockedYear
       }));
 
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
+        // Debounced Cloud Sync
+        try {
+          await fetch('/api/data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ students, subjects, scores }),
+          });
+          setLastSynced(new Date());
+        } catch (e) {
+          console.error("Cloud sync failed", e);
+        }
         setIsSaving(false);
         setLastSaved(new Date());
-      }, 800);
+      }, 2000); // 2 seconds debounce
+
       return () => clearTimeout(timer);
     }
   }, [students, subjects, scores, isLoaded, defaultAcademicYear, lockedYear]);
@@ -153,6 +226,7 @@ export default function GradingSystem() {
       setIsAdminMode(true);
       setShowAdminLogin(false);
       setAdminPassword('');
+      alert('เข้าสู่ระบบผู้ดูแลระบบสำเร็จ');
     } else {
       alert('รหัสผ่านไม่ถูกต้อง');
     }
@@ -170,69 +244,95 @@ export default function GradingSystem() {
   };
 
   const handleImportStudents = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isAdminMode) {
+      setShowAdminLogin(true);
+      // Reset the file input so it can be triggered again after login
+      e.target.value = '';
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      encoding: "UTF-8", // Default to UTF-8
-      complete: (results) => {
-        if (results.data.length === 0) {
-          alert('ไม่พบข้อมูลในไฟล์ CSV');
-          return;
-        }
+    const fileName = file.name.toLowerCase();
+    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
 
-        const imported = results.data.map((row: any, index) => {
-          // Normalize keys to handle whitespace and different encodings
-          const normalizedRow: any = {};
-          Object.keys(row).forEach(key => {
-            normalizedRow[key.trim()] = row[key];
-          });
+    if (isExcel) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const results = XLSX.utils.sheet_to_json(worksheet);
+        processStudentData(results);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        encoding: "UTF-8",
+        complete: (results) => processStudentData(results.data),
+        error: (error) => alert(`Error: ${error.message}`)
+      });
+    }
+  };
 
-          // Auto-detect fields from Thai CSV headers with more synonyms
-          const code = normalizedRow['รหัสนักเรียน'] || normalizedRow['เลขประจำตัว'] || normalizedRow['เลขที่'] || normalizedRow['code'] || normalizedRow['No.'] || '';
-          const idCard = normalizedRow['เลขประจำตัวประชาชน'] || normalizedRow['เลขบัตรประชาชน'] || normalizedRow['idCard'] || '';
-          const prefix = normalizedRow['คำนำหน้าชื่อ'] || normalizedRow['คำนำหน้า'] || normalizedRow['prefix'] || '';
-          const firstName = normalizedRow['ชื่อ'] || normalizedRow['ชื่อจริง'] || normalizedRow['firstName'] || normalizedRow['name'] || '';
-          const lastName = normalizedRow['นามสกุล'] || normalizedRow['surname'] || normalizedRow['lastName'] || '';
-          const className = normalizedRow['ชั้น'] || normalizedRow['ระดับชั้น'] || normalizedRow['grade'] || normalizedRow['class'] || '';
-          const room = normalizedRow['ห้อง'] || normalizedRow['room'] || '';
+  const processStudentData = (data: any[]) => {
+    if (data.length === 0) {
+      alert('ไม่พบข้อมูลในไฟล์');
+      return;
+    }
 
-          let fullName = normalizedRow['ชื่อ-นามสกุล'] || normalizedRow['ชื่อนามสกุล'] || normalizedRow['fullName'] || '';
-          if (!fullName && firstName) {
-            fullName = `${prefix}${firstName} ${lastName}`.trim();
-          }
+    const imported = data.map((row: any, index) => {
+      const normalizedRow: any = {};
+      Object.keys(row).forEach(key => {
+        normalizedRow[key.trim()] = row[key];
+      });
 
-          return {
-            id: idCard || `std-${Date.now()}-${index}`,
-            code: code.toString(),
-            name: fullName,
-            class: className.toString(),
-            room: room.toString(),
-            year: academicYear
-          };
-        }).filter(s => s.name); // Filter out empty rows
+      const code = normalizedRow['รหัสนักเรียน'] || normalizedRow['เลขประจำตัว'] || normalizedRow['เลขที่'] || normalizedRow['code'] || normalizedRow['No.'] || '';
+      const idCard = normalizedRow['เลขประจำตัวประชาชน'] || normalizedRow['เลขบัตรประชาชน'] || normalizedRow['idCard'] || '';
+      const prefix = normalizedRow['คำนำหน้าชื่อ'] || normalizedRow['คำนำหน้า'] || normalizedRow['prefix'] || '';
+      const firstName = normalizedRow['ชื่อ'] || normalizedRow['ชื่อจริง'] || normalizedRow['firstName'] || normalizedRow['name'] || '';
+      const lastName = normalizedRow['นามสกุล'] || normalizedRow['surname'] || normalizedRow['lastName'] || '';
+      const className = normalizedRow['ชั้น'] || normalizedRow['ระดับชั้น'] || normalizedRow['grade'] || normalizedRow['class'] || '';
+      const room = normalizedRow['ห้อง'] || normalizedRow['room'] || '';
 
-        if (imported.length === 0) {
-          alert('ไม่สามารถนำเข้าข้อมูลได้ กรุณาตรวจสอบหัวตาราง (Header) ในไฟล์ CSV ของท่าน\nตัวอย่างหัวตารางที่รองรับ: รหัสนักเรียน, ชื่อ, นามสกุล, ชั้น, ห้อง');
-          return;
-        }
+      let fullName = normalizedRow['ชื่อ-นามสกุล'] || normalizedRow['ชื่อนามสกุล'] || normalizedRow['fullName'] || '';
+      if (!fullName && firstName) {
+        fullName = `${prefix}${firstName} ${lastName}`.trim();
+      }
 
-        setStudents(prev => {
-          // Avoid duplicates by code or id for the SAME year
-          const existingIds = new Set(prev.filter(s => s.year === academicYear).map(s => s.id));
-          const existingCodes = new Set(prev.filter(s => s.year === academicYear).map(s => s.code));
-          const newOnes = imported.filter(s => !existingIds.has(s.id) && !existingCodes.has(s.code));
-          return [...prev, ...newOnes];
-        });
-        alert(`นำเข้าข้อมูลนักเรียนสำเร็จ ${imported.length} คน`);
-      },
-      error: (error) => alert(`Error: ${error.message}`)
+      return {
+        id: idCard || `std-${Date.now()}-${index}`,
+        code: code.toString(),
+        name: fullName,
+        class: className.toString(),
+        room: room.toString(),
+        year: academicYear
+      };
+    }).filter(s => s.name);
+
+    if (imported.length === 0) {
+      alert('ไม่สามารถนำเข้าข้อมูลได้ กรุณาตรวจสอบหัวตาราง\nตัวอย่างที่รองรับ: รหัสนักเรียน, ชื่อ, นามสกุล, ชั้น, ห้อง');
+      return;
+    }
+
+    setStudents(prev => {
+      const existingIds = new Set(prev.filter(s => s.year === academicYear).map(s => s.id));
+      const existingCodes = new Set(prev.filter(s => s.year === academicYear).map(s => s.code));
+      const newOnes = imported.filter(s => !existingIds.has(s.id) && !existingCodes.has(s.code));
+      return [...prev, ...newOnes];
     });
+    alert(`นำเข้าข้อมูลนักเรียนสำเร็จ ${imported.length} คน`);
   };
 
   const handleImportSubjects = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isAdminMode) {
+      setShowAdminLogin(true);
+      e.target.value = '';
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -318,20 +418,32 @@ export default function GradingSystem() {
   };
 
   const loadStandardSubjects = (grade: string) => {
+    if (!isAdminMode) {
+      setShowAdminLogin(true);
+      return;
+    }
     const gradeNum = parseInt(grade) || 1;
-    const subjectsToLoad = [
-      { code: `ท1${gradeNum}101`, name: 'ภาษาไทย', type: 'พื้นฐาน', credit: 4 },
-      { code: `ค1${gradeNum}101`, name: 'คณิตศาสตร์', type: 'พื้นฐาน', credit: 4 },
-      { code: `ว1${gradeNum}101`, name: 'วิทยาศาสตร์และเทคโนโลยี', type: 'พื้นฐาน', credit: 3 },
+    let subjectsToLoad = [
+      { code: `ท1${gradeNum}101`, name: 'ภาษาไทย', type: 'พื้นฐาน', credit: 5 },
+      { code: `ค1${gradeNum}101`, name: 'คณิตศาสตร์', type: 'พื้นฐาน', credit: 5 },
+      { code: `ว1${gradeNum}101`, name: 'วิทยาศาสตร์และเทคโนโลยี', type: 'พื้นฐาน', credit: 2 },
       { code: `ส1${gradeNum}101`, name: 'สังคมศึกษา ศาสนา และวัฒนธรรม', type: 'พื้นฐาน', credit: 2 },
       { code: `ส1${gradeNum}102`, name: 'ประวัติศาสตร์', type: 'พื้นฐาน', credit: 1 },
       { code: `พ1${gradeNum}101`, name: 'สุขศึกษาและพลศึกษา', type: 'พื้นฐาน', credit: 1 },
       { code: `ศ1${gradeNum}101`, name: 'ศิลปะ', type: 'พื้นฐาน', credit: 1 },
       { code: `ง1${gradeNum}101`, name: 'การงานอาชีพ', type: 'พื้นฐาน', credit: 1 },
-      { code: `อ1${gradeNum}101`, name: 'ภาษาอังกฤษ', type: 'พื้นฐาน', credit: 2 },
-      { code: `ว1${gradeNum}201`, name: 'วิชาเพิ่มเติม 1', type: 'เพิ่มเติม', credit: 1 },
-      { code: `ส1${gradeNum}201`, name: 'วิชาเพิ่มเติม 2', type: 'เพิ่มเติม', credit: 1 },
+      { code: `อ1${gradeNum}101`, name: 'ภาษาอังกฤษ', type: 'พื้นฐาน', credit: 3 },
+      { code: `ส1${gradeNum}231`, name: 'หน้าที่พลเมือง', type: 'เพิ่มเติม', credit: 1 },
+      { code: `ส1${gradeNum}201`, name: 'วิชาเพิ่มเติม (ป้องกันการทุจริต)', type: 'เพิ่มเติม', credit: 1 },
+      { code: `ก1${gradeNum}901`, name: 'กิจกรรมแนะแนว', type: 'กิจกรรม', credit: 1 },
+      { code: `ก1${gradeNum}902`, name: 'กิจกรรมนร. (ลูกเสือ/เนตรนารี)', type: 'กิจกรรม', credit: 1 },
+      { code: `ก1${gradeNum}903`, name: 'กิจกรรมนร. (ชุมนุม)', type: 'กิจกรรม', credit: 1 },
+      { code: `ก1${gradeNum}904`, name: 'กิจกรรมเพื่อสังคมและสาธารณประโยชน์', type: 'กิจกรรม', credit: 1 },
     ];
+
+    if (gradeNum === 1) {
+      // Specific latest P.1 subjects adjustment if needed
+    }
 
     setSubjects(prev => {
       let addedCount = 0;
@@ -400,6 +512,10 @@ export default function GradingSystem() {
   };
 
   const handleAddSubject = () => {
+    if (!isAdminMode) {
+      setShowAdminLogin(true);
+      return;
+    }
     if (newSubject.code && newSubject.name) {
       setSubjects(prev => [...prev, {
         ...newSubject as Subject,
@@ -798,7 +914,7 @@ export default function GradingSystem() {
                 <span>นำเข้า CSV</span>
                 <input
                   type="file"
-                  accept=".csv"
+                  accept=".csv,.xlsx,.xls"
                   className="hidden"
                   onChange={(e) => {
                     if (!isAdminMode) {
@@ -830,30 +946,30 @@ export default function GradingSystem() {
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50 text-slate-500 text-sm uppercase tracking-wider">
+                <tr className="bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-300 text-sm uppercase tracking-wider">
                   <th className="px-6 py-4 font-semibold">รหัส</th>
                   <th className="px-6 py-4 font-semibold">ชื่อ-นามสกุล</th>
                   <th className="px-6 py-4 font-semibold">ชั้น/ห้อง</th>
                   <th className="px-6 py-4 font-semibold text-center">จัดการ</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                 {studentsInYear.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={4} className="px-6 py-12 text-center text-slate-400 dark:text-slate-500">
                       ยังไม่มีข้อมูลนักเรียนในปี {academicYear} กรุณานำเข้าไฟล์ CSV
                     </td>
                   </tr>
                 ) : (
                   studentsInYear.map((student) => (
-                    <tr key={student.id} className="hover:bg-slate-50 transition-colors group">
-                      <td className="px-6 py-4 text-slate-700 font-mono">{student.code}</td>
-                      <td className="px-6 py-4 text-slate-800 font-medium">{student.name}</td>
-                      <td className="px-6 py-4 text-slate-600">{student.class} {student.room && `/${student.room}`}</td>
+                    <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors group">
+                      <td className="px-6 py-4 text-slate-700 dark:text-slate-200 font-mono">{student.code}</td>
+                      <td className="px-6 py-4 text-slate-800 dark:text-slate-100 font-medium">{student.name}</td>
+                      <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{student.class} {student.room && `/${student.room}`}</td>
                       <td className="px-6 py-4 text-center">
                         <button
                           onClick={() => deleteStudent(student.id)}
-                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                           title="ลบนักเรียน"
                         >
                           <Trash2 size={16} />
@@ -867,22 +983,22 @@ export default function GradingSystem() {
           </div>
 
           {/* Card View for Mobile */}
-          <div className="md:hidden divide-y divide-slate-100">
+          <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-700">
             {studentsInYear.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 text-sm">
+              <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-sm">
                 ยังไม่มีข้อมูลนักเรียนในปี {academicYear} กรุณานำเข้าไฟล์ CSV
               </div>
             ) : (
               studentsInYear.map((student) => (
                 <div key={student.id} className="p-4 flex justify-between items-center">
                   <div>
-                    <p className="text-xs font-mono text-slate-400 mb-0.5">{student.code}</p>
-                    <p className="font-bold text-slate-800">{student.name}</p>
-                    <p className="text-xs text-slate-500">{student.class} {student.room && `/${student.room}`}</p>
+                    <p className="text-xs font-mono text-slate-400 dark:text-slate-500 mb-0.5">{student.code}</p>
+                    <p className="font-bold text-slate-800 dark:text-slate-100">{student.name}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{student.class} {student.room && `/${student.room}`}</p>
                   </div>
                   <button
                     onClick={() => deleteStudent(student.id)}
-                    className="p-2 text-red-400 hover:bg-red-50 rounded-lg"
+                    className="p-2 text-red-400 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900 rounded-lg"
                   >
                     <Trash2 size={18} />
                   </button>
@@ -907,7 +1023,7 @@ export default function GradingSystem() {
       <div className="space-y-6">
         {/* Top Controls: Semester & Subject Management */}
         <div className="flex flex-col lg:flex-row gap-4 justify-between items-start">
-          <div className="flex bg-white p-1 rounded-xl border border-slate-100 w-full lg:w-fit shadow-sm overflow-x-auto">
+          <div className="flex bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-100 dark:border-slate-700 w-full lg:w-fit shadow-sm overflow-x-auto">
             {[1, 2].map(sem => (
               <button
                 key={sem}
@@ -916,7 +1032,7 @@ export default function GradingSystem() {
                   "flex-1 lg:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap",
                   activeSemester === sem
                     ? "bg-emerald-600 text-white shadow-md"
-                    : "text-slate-500 hover:text-slate-800"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"
                 )}
               >
                 เทอม {sem}
@@ -942,7 +1058,7 @@ export default function GradingSystem() {
             <div className="relative">
               <button
                 onClick={() => setIsSubjectMenuOpen(!isSubjectMenuOpen)}
-                className="w-full flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors shadow-sm text-xs sm:text-sm"
+                className="w-full flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors shadow-sm text-xs sm:text-sm"
               >
                 <Settings size={18} />
                 <span>จัดการรายวิชา</span>
@@ -954,7 +1070,7 @@ export default function GradingSystem() {
                     className="fixed inset-0 z-40"
                     onClick={() => setIsSubjectMenuOpen(false)}
                   />
-                  <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-xl shadow-lg z-50 py-1 overflow-hidden">
+                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl shadow-lg z-50 py-1 overflow-hidden">
                     <button
                       onClick={() => {
                         setIsSubjectMenuOpen(false);
@@ -964,13 +1080,13 @@ export default function GradingSystem() {
                         }
                         setIsStandardSubjectModalOpen(true);
                       }}
-                      className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+                      className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
                     >
-                      <BookOpen size={16} className="text-slate-400" />
+                      <BookOpen size={16} className="text-slate-400 dark:text-slate-500" />
                       กำหนดวิชามาตรฐาน
                     </button>
-                    <label className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 cursor-pointer transition-colors">
-                      <Upload size={16} className="text-slate-400" />
+                    <label className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 cursor-pointer transition-colors">
+                      <Upload size={16} className="text-slate-400 dark:text-slate-500" />
                       นำเข้าวิชา (CSV)
                       <input
                         type="file"
@@ -992,9 +1108,9 @@ export default function GradingSystem() {
                         setIsSubjectMenuOpen(false);
                         downloadSubjectTemplate();
                       }}
-                      className="w-full text-left px-4 py-3 text-sm text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 transition-colors border-t border-slate-50"
+                      className="w-full text-left px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900 flex items-center gap-3 transition-colors border-t border-slate-50 dark:border-slate-700"
                     >
-                      <Download size={16} className="text-emerald-500" />
+                      <Download size={16} className="text-emerald-500 dark:text-emerald-400" />
                       ดาวน์โหลดเทมเพลต
                     </button>
                   </div>
@@ -1005,16 +1121,16 @@ export default function GradingSystem() {
         </div>
 
         {/* Grading Table */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+          <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-800">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
                 ตารางกรอกคะแนน ป.{gradingGrade} (เทอม {activeSemester})
               </h2>
               <div className="flex items-center gap-2">
-                <p className="text-xs text-slate-500">Enter: ลงล่าง | Tab: ไปขวา</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Enter: ลงล่าง | Tab: ไปขวา</p>
                 {lockedYear !== null && academicYear !== lockedYear && (
-                  <span className="text-[10px] bg-red-50 text-red-600 px-2 py-0.5 rounded-full font-bold animate-pulse">
+                  <span className="text-[10px] bg-red-50 dark:bg-red-900 text-red-600 dark:text-red-300 px-2 py-0.5 rounded-full font-bold animate-pulse">
                     ระบบล็อคไว้ที่ปี {lockedYear} (อ่านอย่างเดียว)
                   </span>
                 )}
@@ -1041,11 +1157,11 @@ export default function GradingSystem() {
           </div>
           <div className="overflow-x-auto max-h-[75vh]">
             <table className="w-full text-left border-collapse">
-              <thead className="sticky top-0 z-10 bg-slate-50 shadow-sm">
-                <tr className="text-slate-500 text-[10px] sm:text-xs uppercase tracking-wider">
-                  <th className="px-2 sm:px-4 py-4 font-bold min-w-[150px] sm:min-w-[220px] bg-slate-50 sticky left-0 z-20 border-r border-slate-200">นักเรียน</th>
+              <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-700 shadow-sm">
+                <tr className="text-slate-500 dark:text-slate-300 text-[10px] sm:text-xs uppercase tracking-wider">
+                  <th className="px-2 sm:px-4 py-4 font-bold min-w-[150px] sm:min-w-[220px] bg-slate-50 dark:bg-slate-700 sticky left-0 z-20 border-r border-slate-200 dark:border-slate-600">นักเรียน</th>
                   {filteredSubjects.map(subject => (
-                    <th key={subject.id} className="px-1 sm:px-2 py-4 font-bold text-center border-r border-slate-100 last:border-r-0 min-w-[60px] sm:min-w-[80px] group relative">
+                    <th key={subject.id} className="px-1 sm:px-2 py-4 font-bold text-center border-r border-slate-100 dark:border-slate-700 last:border-r-0 min-w-[60px] sm:min-w-[80px] group relative">
                       <div className="truncate px-1 cursor-help" title={`${subject.name} (${subject.type || 'พื้นฐาน'} - ${subject.credit || 1} หน่วยกิต)`}>
                         {getShortSubjectName(subject.name)}
                       </div>
@@ -1053,30 +1169,30 @@ export default function GradingSystem() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                 {filteredStudents.length === 0 ? (
                   <tr>
-                    <td colSpan={filteredSubjects.length + 1} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={filteredSubjects.length + 1} className="px-6 py-12 text-center text-slate-400 dark:text-slate-500">
                       ไม่พบข้อมูลนักเรียน
                     </td>
                   </tr>
                 ) : filteredSubjects.length === 0 ? (
                   <tr>
-                    <td colSpan={filteredSubjects.length + 1} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={filteredSubjects.length + 1} className="px-6 py-12 text-center text-slate-400 dark:text-slate-500">
                       ยังไม่มีรายวิชา
                     </td>
                   </tr>
                 ) : (
                   filteredStudents.map((student, sIdx) => (
-                    <tr key={student.id} className="hover:bg-slate-50 transition-colors group">
-                      <td className="px-2 sm:px-4 py-3 bg-white sticky left-0 z-10 border-r border-slate-200 group-hover:bg-slate-50">
-                        <div className="font-medium text-slate-800 text-xs sm:text-sm truncate" title={student.name}>{student.name}</div>
-                        <div className="text-[10px] text-slate-400">{student.code}</div>
+                    <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors group">
+                      <td className="px-2 sm:px-4 py-3 bg-white dark:bg-slate-800 sticky left-0 z-10 border-r border-slate-200 dark:border-slate-600 group-hover:bg-slate-50 dark:group-hover:bg-slate-700">
+                        <div className="font-medium text-slate-800 dark:text-slate-100 text-xs sm:text-sm truncate" title={student.name}>{student.name}</div>
+                        <div className="text-[10px] text-slate-400 dark:text-slate-500">{student.code}</div>
                       </td>
                       {filteredSubjects.map((subject, subIdx) => {
                         const score = getScore(student.id, subject.id);
                         return (
-                          <td key={subject.id} className="px-1 sm:px-2 py-3 text-center border-r border-slate-100 last:border-r-0">
+                          <td key={subject.id} className="px-1 sm:px-2 py-3 text-center border-r border-slate-100 dark:border-slate-700 last:border-r-0">
                             <div className="flex flex-col items-center">
                               <input
                                 type="number"
@@ -1089,8 +1205,8 @@ export default function GradingSystem() {
                                 onKeyDown={(e) => handleKeyDown(e, sIdx, subIdx, filteredStudents.length, filteredSubjects.length)}
                                 onChange={(e) => updateScore(student.id, subject.id, e.target.value)}
                                 className={cn(
-                                  "w-full max-w-[50px] sm:max-w-[60px] h-8 sm:h-9 text-center border border-slate-200 rounded focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all text-xs sm:text-sm font-medium",
-                                  lockedYear !== null && academicYear !== lockedYear && "bg-slate-50 text-slate-400 cursor-not-allowed"
+                                  "w-full max-w-[50px] sm:max-w-[60px] h-8 sm:h-9 text-center border border-slate-200 dark:border-slate-600 rounded focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:border-emerald-500 dark:focus:border-emerald-400 outline-none transition-all text-xs sm:text-sm font-medium bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100",
+                                  lockedYear !== null && academicYear !== lockedYear && "bg-slate-50 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed"
                                 )}
                                 placeholder="-"
                               />
@@ -1343,21 +1459,27 @@ export default function GradingSystem() {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50 font-sans relative">
-      {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-40">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white">
-            <LayoutDashboard size={18} />
-          </div>
-          <h1 className="font-bold text-slate-800 text-sm">ระบบจัดการคะแนน</h1>
-        </div>
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans overflow-hidden transition-colors duration-300">
+      {/* Mobile Toggle & Status */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 p-4 flex items-center justify-between z-40">
         <button
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400"
         >
-          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          <Menu size={20} />
         </button>
+        <div className="flex items-center gap-2">
+          <div className="text-right">
+            <h1 className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight">ระบบจัดการคะแนน</h1>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">เทอม {activeSemester}/{academicYear}</p>
+          </div>
+          <button
+            onClick={toggleTheme}
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400"
+          >
+            {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+        </div>
       </div>
 
       {/* Sidebar Overlay for Mobile */}
@@ -1376,14 +1498,14 @@ export default function GradingSystem() {
       {/* Sidebar */}
       <aside
         className={cn(
-          "bg-white border-r border-slate-200 p-4 flex flex-col gap-8 transition-all duration-300 fixed lg:relative h-full z-50",
+          "bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-4 flex flex-col gap-8 transition-all duration-300 fixed lg:relative h-full z-50",
           isSidebarCollapsed ? "w-20" : "w-64",
           isMobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
         <button
           onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          className="hidden lg:block absolute -right-3 top-20 bg-white border border-slate-200 rounded-full p-1 text-slate-400 hover:text-emerald-600 shadow-sm z-10"
+          className="hidden lg:block absolute -right-3 top-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-full p-1 text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 shadow-sm z-10"
         >
           {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
@@ -1394,8 +1516,8 @@ export default function GradingSystem() {
           </div>
           {!isSidebarCollapsed && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <h1 className="font-bold text-slate-800 leading-tight whitespace-nowrap text-sm">ระบบจัดการคะแนน</h1>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest">Grade Management</p>
+              <h1 className="font-bold text-slate-800 dark:text-slate-100 leading-tight whitespace-nowrap text-sm">ระบบจัดการคะแนน</h1>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest">Grade Management</p>
             </motion.div>
           )}
         </div>
@@ -1403,11 +1525,11 @@ export default function GradingSystem() {
         {/* Academic Year Selector */}
         {(!isSidebarCollapsed || isMobileMenuOpen) && (
           <div className="px-2">
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-1">ปีการศึกษา</label>
+            <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">ปีการศึกษา</label>
             <select
               value={academicYear}
               onChange={(e) => setAcademicYear(Number(e.target.value))}
-              className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500 transition-all cursor-pointer"
+              className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 transition-all cursor-pointer"
             >
               {Array.from({ length: 11 }, (_, i) => {
                 const currentBE = new Date().getFullYear() + 543;
@@ -1476,7 +1598,7 @@ export default function GradingSystem() {
         </nav>
 
         {/* Footer Actions */}
-        <div className="mt-auto flex flex-col gap-2 border-t border-slate-100 pt-4">
+        <div className="mt-auto flex flex-col gap-2 border-t border-slate-100 dark:border-slate-800 pt-4">
           <SidebarItem
             icon={FileBarChart}
             label={(isSidebarCollapsed && !isMobileMenuOpen) ? "" : "ดูเกรด ปพ.1"}
@@ -1491,12 +1613,12 @@ export default function GradingSystem() {
           <button
             onClick={() => setIsYearSettingsOpen(true)}
             className={cn(
-              "flex items-center gap-3 px-3 py-2 rounded-xl text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-all",
+              "flex items-center gap-3 px-3 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 transition-all",
               isSidebarCollapsed && !isMobileMenuOpen && "justify-center"
             )}
             title="ตั้งค่าปีการศึกษา"
           >
-            <Settings size={20} className="text-slate-400" />
+            <Settings size={20} className="text-slate-400 dark:text-slate-500" />
             {(!isSidebarCollapsed || isMobileMenuOpen) && <span className="text-sm font-medium">ตั้งค่าระบบ</span>}
           </button>
 
@@ -1504,11 +1626,44 @@ export default function GradingSystem() {
           <div className={cn("px-3 py-2 flex items-center gap-2", (isSidebarCollapsed && !isMobileMenuOpen) && "justify-center")}>
             <div className={cn("w-2 h-2 rounded-full shrink-0", isSaving ? "bg-amber-400 animate-pulse" : "bg-emerald-500")} />
             {(!isSidebarCollapsed || isMobileMenuOpen) && (
-              <div className="text-[10px] text-slate-400 truncate">
+              <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
                 {isSaving ? "กำลังบันทึก..." : lastSaved ? `บันทึกเมื่อ ${lastSaved.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : "บันทึกอัตโนมัติ"}
               </div>
             )}
           </div>
+          {/* Theme Toggle Button for Desktop Sidebar */}
+          {(!isSidebarCollapsed || isMobileMenuOpen) && (
+            <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+              <button
+                onClick={toggleTheme}
+                className="w-full flex items-center gap-3 p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+                title={isDarkMode ? "เปลี่ยนเป็นโหมดสว่าง" : "เปลี่ยนเป็นโหมดมืด"}
+              >
+                {isDarkMode ? <Sun size={20} className="text-slate-400 dark:text-slate-500" /> : <Moon size={20} className="text-slate-400 dark:text-slate-500" />}
+                <span className="text-sm font-medium">
+                  {isDarkMode ? "โหมดสว่าง" : "โหมดมืด"}
+                </span>
+              </button>
+
+              <button
+                onClick={() => isAdminMode ? setIsAdminMode(false) : setShowAdminLogin(true)}
+                className={cn(
+                  "w-full flex items-center gap-3 p-2 rounded-xl transition-colors",
+                  isAdminMode
+                    ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
+                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100"
+                )}
+              >
+                <div className={cn("w-5 h-5 flex items-center justify-center rounded-full", isAdminMode ? "bg-emerald-500 text-white" : "bg-slate-200 dark:bg-slate-700")}>
+                  {isAdminMode ? <Settings size={12} /> : <Settings size={12} className="text-slate-500" />}
+                </div>
+                <span className="text-sm font-medium">
+                  {isAdminMode ? "Admin: ทั่วไป" : "เข้าสู่ระบบ Admin"}
+                </span>
+                {isAdminMode && <div className="ml-auto w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -1520,22 +1675,22 @@ export default function GradingSystem() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-sm"
+              className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-xl w-full max-w-sm"
             >
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-bold text-slate-800">ตั้งค่าปีการศึกษา</h3>
-                <button onClick={() => setIsYearSettingsOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">ตั้งค่าปีการศึกษา</h3>
+                <button onClick={() => setIsYearSettingsOpen(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300">
                   <X size={20} />
                 </button>
               </div>
 
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">ปีการศึกษาเริ่มต้น (Default)</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">ปีการศึกษาเริ่มต้น (Default)</label>
                   <select
                     value={defaultAcademicYear}
                     onChange={(e) => setDefaultAcademicYear(Number(e.target.value))}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold cursor-pointer"
+                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none font-bold cursor-pointer text-slate-800 dark:text-slate-100"
                   >
                     {Array.from({ length: 11 }, (_, i) => {
                       const currentBE = new Date().getFullYear() + 543;
@@ -1543,49 +1698,49 @@ export default function GradingSystem() {
                       return <option key={year} value={year}>ปีการศึกษา {year}</option>
                     })}
                   </select>
-                  <p className="text-[10px] text-slate-400 mt-1">* ปีการศึกษาที่จะแสดงเป็นอันดับแรกเมื่อเปิดแอป</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">* ปีการศึกษาที่จะแสดงเป็นอันดับแรกเมื่อเปิดแอป</p>
                 </div>
 
-                <div className="border-t border-slate-100 pt-6">
-                  <label className="block text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
+                <div className="border-t border-slate-100 dark:border-slate-700 pt-6">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2">
                     <div className="w-1.5 h-4 bg-emerald-500 rounded-full" />
                     Cloud Synchronization (D1)
                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={syncToCloud}
-                      disabled={isSyncing}
-                      className="flex flex-col items-center gap-2 p-3 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl border border-emerald-100 transition-all disabled:opacity-50"
+                      disabled={isSaving} // Use isSaving as a proxy for sync status
+                      className="flex flex-col items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-800 rounded-xl border border-emerald-100 dark:border-emerald-700 transition-all disabled:opacity-50"
                     >
                       <Upload size={18} />
                       <span className="text-[11px] font-bold">สำรองข้อมูลขึ้น Cloud</span>
                     </button>
                     <button
                       onClick={loadFromCloud}
-                      disabled={isSyncing}
-                      className="flex flex-col items-center gap-2 p-3 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-xl border border-amber-100 transition-all disabled:opacity-50"
+                      disabled={isSaving} // Use isSaving as a proxy for sync status
+                      className="flex flex-col items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-800 rounded-xl border border-amber-100 dark:border-amber-700 transition-all disabled:opacity-50"
                     >
                       <Download size={18} />
                       <span className="text-[11px] font-bold">ดึงข้อมูลจาก Cloud</span>
                     </button>
                   </div>
-                  {lastSynced && (
-                    <p className="text-[9px] text-emerald-600 mt-2 text-center font-medium">
-                      อัปเดตล่าสุด: {lastSynced.toLocaleTimeString('th-TH')}
+                  {lastSaved && (
+                    <p className="text-[9px] text-emerald-600 dark:text-emerald-400 mt-2 text-center font-medium">
+                      อัปเดตล่าสุด: {lastSaved.toLocaleTimeString('th-TH')}
                     </p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">ล็อคการแก้ไข (Lock Year)</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">ล็อคการแก้ไข (Lock Year)</label>
                   <div className="flex items-center gap-3">
                     <select
                       value={lockedYear || academicYear}
                       disabled={lockedYear === null}
                       onChange={(e) => setLockedYear(Number(e.target.value))}
                       className={cn(
-                        "flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold cursor-pointer",
-                        lockedYear === null ? "opacity-50" : "focus:ring-2 focus:ring-red-500"
+                        "flex-1 px-4 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl outline-none font-bold cursor-pointer text-slate-800 dark:text-slate-100",
+                        lockedYear === null ? "opacity-50" : "focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400"
                       )}
                     >
                       {Array.from({ length: 11 }, (_, i) => {
@@ -1599,14 +1754,14 @@ export default function GradingSystem() {
                       className={cn(
                         "px-4 py-2 rounded-xl font-bold text-xs transition-all",
                         lockedYear === null
-                          ? "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                          : "bg-red-50 text-red-600 hover:bg-red-100"
+                          ? "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
+                          : "bg-red-50 dark:bg-red-900 text-red-600 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-800"
                       )}
                     >
                       {lockedYear === null ? "ล็อค" : "ปลดล็อค"}
                     </button>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1">* หากล็อคไว้ จะไม่สามารถแก้ไขคะแนนในปีอื่นได้</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">* หากล็อคไว้ จะไม่สามารถแก้ไขคะแนนในปีอื่นได้</p>
                 </div>
 
                 <button
@@ -1629,22 +1784,22 @@ export default function GradingSystem() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white p-6 rounded-2xl shadow-xl w-[90%] max-w-sm"
+              className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-xl w-[90%] max-w-sm"
             >
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-slate-800">ยืนยันสิทธิ์ผู้ดูแลระบบ</h3>
-                <button onClick={() => setShowAdminLogin(false)} className="text-slate-400 hover:text-slate-600">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">ยืนยันสิทธิ์ผู้ดูแลระบบ</h3>
+                <button onClick={() => setShowAdminLogin(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300">
                   <X size={20} />
                 </button>
               </div>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">รหัสผ่าน</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">รหัสผ่าน</label>
                   <input
                     type="password"
                     value={adminPassword}
                     onChange={(e) => setAdminPassword(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
                     placeholder="กรอกรหัสผ่านเพื่อแก้ไขข้อมูล"
                     autoFocus
                     onKeyDown={(e) => e.key === 'Enter' && handleAdminLogin()}
@@ -1683,11 +1838,11 @@ export default function GradingSystem() {
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl"
+            className="bg-white dark:bg-slate-800 rounded-2xl p-8 w-full max-w-md shadow-2xl"
           >
-            <h3 className="text-xl font-bold text-slate-800 mb-6">เพิ่มรายวิชาใหม่</h3>
+            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-6">เพิ่มรายวิชาใหม่</h3>
             <div className="space-y-4">
-              <div className="flex gap-4 p-1 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="flex gap-4 p-1 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600">
                 {[1, 2].map(sem => (
                   <button
                     key={sem}
@@ -1695,8 +1850,8 @@ export default function GradingSystem() {
                     className={cn(
                       "flex-1 py-2 rounded-md text-sm font-bold transition-all",
                       newSubject.semester === sem
-                        ? "bg-white text-emerald-600 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600"
+                        ? "bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm"
+                        : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                     )}
                   >
                     เทอม {sem}
@@ -1704,32 +1859,32 @@ export default function GradingSystem() {
                 ))}
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">รหัสวิชา</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">รหัสวิชา</label>
                 <input
                   type="text"
                   value={newSubject.code}
                   onChange={e => setNewSubject(prev => ({ ...prev, code: e.target.value }))}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
                   placeholder="เช่น ท11101"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">ชื่อวิชา</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">ชื่อวิชา</label>
                 <input
                   type="text"
                   value={newSubject.name}
                   onChange={e => setNewSubject(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
                   placeholder="เช่น ภาษาไทย"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">ประเภทวิชา</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">ประเภทวิชา</label>
                   <select
                     value={newSubject.type || 'พื้นฐาน'}
                     onChange={e => setNewSubject(prev => ({ ...prev, type: e.target.value as any }))}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
                   >
                     <option value="พื้นฐาน">พื้นฐาน</option>
                     <option value="เพิ่มเติม">เพิ่มเติม</option>
@@ -1737,30 +1892,30 @@ export default function GradingSystem() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">หน่วยกิต/น้ำหนัก</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">หน่วยกิต/น้ำหนัก</label>
                   <input
                     type="number"
                     step="0.5"
                     value={newSubject.credit || ''}
                     onChange={e => setNewSubject(prev => ({ ...prev, credit: Number(e.target.value) }))}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
                     placeholder="เช่น 1.5"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">คะแนนเต็ม</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">คะแนนเต็ม</label>
                 <input
                   type="number"
                   value={newSubject.maxScore}
                   onChange={e => setNewSubject(prev => ({ ...prev, maxScore: Number(e.target.value) }))}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
                 />
               </div>
               <div className="flex gap-3 pt-4">
                 <button
                   onClick={() => setIsAddSubjectOpen(false)}
-                  className="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium"
+                  className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 font-medium"
                 >
                   ยกเลิก
                 </button>
@@ -1781,14 +1936,14 @@ export default function GradingSystem() {
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl"
+            className="bg-white dark:bg-slate-800 rounded-2xl p-8 w-full max-w-md shadow-2xl"
           >
-            <h3 className="text-xl font-bold text-slate-800 mb-6">ออกรายงานผลการเรียน (ปพ.6)</h3>
+            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-6">ออกรายงานผลการเรียน (ปพ.6)</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">เลือกนักเรียน ป.{gradingGrade}</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">เลือกนักเรียน ป.{gradingGrade}</label>
                 <select
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
                   value={reportSelectedStudent}
                   onChange={(e) => setReportSelectedStudent(e.target.value)}
                 >
@@ -1802,7 +1957,7 @@ export default function GradingSystem() {
                 <button
                   onClick={() => setIsReportModalOpen(false)}
                   disabled={isGeneratingPDF}
-                  className="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium disabled:opacity-50"
+                  className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 font-medium disabled:opacity-50"
                 >
                   ยกเลิก
                 </button>
@@ -1837,18 +1992,18 @@ export default function GradingSystem() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white p-6 rounded-2xl shadow-xl w-[90%] max-w-sm border-t-4 border-red-500"
+              className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-xl w-[90%] max-w-sm border-t-4 border-red-500"
             >
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                   <Trash2 className="text-red-500" size={20} />
                   ยืนยันการล้างข้อมูลนักเรียน
                 </h3>
-                <button onClick={() => setIsClearDataModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => setIsClearDataModalOpen(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300">
                   <X size={20} />
                 </button>
               </div>
-              <p className="text-sm text-slate-500 mb-4">
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
                 ข้อมูลนักเรียนและคะแนนทั้งหมดที่เชื่อมโยงจะถูกลบ <span className="font-bold text-red-500">การกระทำนี้ไม่สามารถกู้คืนได้</span> กรุณากรอกรหัสผู้ดูแลระบบเพื่อยืนยัน
               </p>
               <div className="space-y-4">
@@ -1944,24 +2099,105 @@ export default function GradingSystem() {
                 ) : (
                   <div className="space-y-3">
                     {subjects.map(subject => (
-                      <div key={subject.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-slate-800">{subject.name}</span>
-                          <span className="text-xs text-slate-500">รหัส: {subject.code} • เทอม {subject.semester} • {subject.type || 'พื้นฐาน'} ({subject.credit || 1} นก.)</span>
+                      <div key={subject.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">ชื่อวิชา</label>
+                            <input
+                              type="text"
+                              value={subject.name}
+                              readOnly={!isAdminMode}
+                              onClick={() => !isAdminMode && setShowAdminLogin(true)}
+                              onChange={(e) => {
+                                if (!isAdminMode) return;
+                                setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, name: e.target.value } : s));
+                              }}
+                              className={cn(
+                                "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500",
+                                !isAdminMode ? "text-slate-400 cursor-not-allowed" : "text-slate-800 dark:text-slate-100"
+                              )}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">รหัสวิชา</label>
+                            <input
+                              type="text"
+                              value={subject.code}
+                              readOnly={!isAdminMode}
+                              onClick={() => !isAdminMode && setShowAdminLogin(true)}
+                              onChange={(e) => {
+                                if (!isAdminMode) return;
+                                setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, code: e.target.value } : s));
+                              }}
+                              className={cn(
+                                "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-mono outline-none focus:ring-2 focus:ring-emerald-500",
+                                !isAdminMode ? "text-slate-400 cursor-not-allowed" : "text-slate-700 dark:text-slate-200"
+                              )}
+                            />
+                          </div>
                         </div>
-                        <button
-                          onClick={() => {
-                            if (confirm(`ต้องการลบวิชา ${subject.name} (รหัส: ${subject.code}) ใช่หรือไม่?\nคะแนนที่กรอกไว้ในวิชานี้จะหายไป`)) {
-                              setSubjects(prev => prev.filter(s => s.id !== subject.id));
-                              // Also clean up any scores that belong to this subject just to be safe
-                              setScores(prev => prev.filter(s => s.subjectId !== subject.id));
-                            }
-                          }}
-                          className="p-2 text-red-500 hover:bg-red-100 rounded-lg transition-colors"
-                          title="ลบวิชาทิ้ง"
-                        >
-                          <Trash2 size={18} />
-                        </button>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">ประเภท</label>
+                            <select
+                              value={subject.type || 'พื้นฐาน'}
+                              disabled={!isAdminMode}
+                              onChange={(e) => {
+                                if (!isAdminMode) return;
+                                setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, type: e.target.value as any } : s));
+                              }}
+                              className={cn(
+                                "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-500",
+                                !isAdminMode ? "text-slate-400" : "text-slate-800 dark:text-slate-100"
+                              )}
+                            >
+                              <option value="พื้นฐาน">พื้นฐาน</option>
+                              <option value="เพิ่มเติม">เพิ่มเติม</option>
+                              <option value="กิจกรรม">กิจกรรม</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">หน่วยกิต</label>
+                            <input
+                              type="number"
+                              step="0.5"
+                              value={subject.credit || 0}
+                              readOnly={!isAdminMode}
+                              onClick={() => !isAdminMode && setShowAdminLogin(true)}
+                              onChange={(e) => {
+                                if (!isAdminMode) return;
+                                setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, credit: Number(e.target.value) } : s));
+                              }}
+                              className={cn(
+                                "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-500",
+                                !isAdminMode ? "text-slate-400 cursor-not-allowed" : "text-slate-800 dark:text-slate-100"
+                              )}
+                            />
+                          </div>
+                          <div className="flex items-end">
+                            <button
+                              onClick={() => {
+                                if (!isAdminMode) {
+                                  setShowAdminLogin(true);
+                                  return;
+                                }
+                                if (confirm(`ต้องการลบวิชา ${subject.name} ใช่หรือไม่?`)) {
+                                  setSubjects(prev => prev.filter(s => s.id !== subject.id));
+                                  setScores(prev => prev.filter(s => s.subjectId !== subject.id));
+                                }
+                              }}
+                              className={cn(
+                                "w-full py-2 rounded-lg transition-colors flex items-center justify-center gap-2",
+                                !isAdminMode
+                                  ? "bg-slate-100 dark:bg-slate-700 text-slate-400"
+                                  : "bg-red-50 dark:bg-red-900/30 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50"
+                              )}
+                            >
+                              <Trash2 size={16} />
+                              <span className="text-[10px] font-bold">ลบทิ้ง</span>
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>

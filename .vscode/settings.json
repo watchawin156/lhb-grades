@@ -1,0 +1,17 @@
+{
+    "switchboard.cliAgents": {},
+    "switchboard.team.strictPrompts": false,
+    "switchboard.planner.strictPrompts": false,
+    "switchboard.review.strictPrompts": false,
+    "mcpServers": {
+        "switchboard": {
+            "command": "node",
+            "args": [
+                "f:/webdev/รวมโปรเจคของโรงเรียน/lhb.pages.dev/lhb-grades/.switchboard/MCP/mcp-server.js"
+            ],
+            "env": {},
+            "disabled": false,
+            "alwaysAllow": []
+        }
+    }
+}
