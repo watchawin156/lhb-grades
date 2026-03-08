@@ -1122,7 +1122,7 @@ export default function GradingSystem() {
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-800 dark:text-slate-100">{selectedStudent.name}</h4>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">เลขประจำตัว: {selectedStudent.code} | ชั้น {selectedStudent.class.split('/')[0]}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">เลขประจำตัว: {selectedStudent.code} | ชั้น {(selectedStudent.class || '').split('/')[0]}</p>
                   </div>
                 </div>
                 <button
@@ -1252,7 +1252,7 @@ export default function GradingSystem() {
               const percentage = progress.total > 0 ? Math.round((progress.graded / progress.total) * 100) : 0;
               return (
                 <div key={className} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-700">
-                  <span className="font-bold text-slate-700 dark:text-slate-200 text-sm">{className.split('/')[0]}</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-200 text-sm">{(className || '').split('/')[0]}</span>
                   <div className={cn("text-xs font-bold px-1.5 py-0.5 rounded-md",
                     percentage === 100 ? "bg-emerald-100 text-emerald-700" :
                       percentage > 50 ? "bg-blue-100 text-blue-700" :
@@ -1328,7 +1328,7 @@ export default function GradingSystem() {
                     <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors group">
                       <td className="px-6 py-4 text-slate-700 dark:text-slate-200 font-mono">{student.code}</td>
                       <td className="px-6 py-4 text-slate-800 dark:text-slate-100 font-medium">{student.name}</td>
-                      <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{student.class.split('/')[0]}</td>
+                      <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{(student.class || '').split('/')[0]}</td>
                       <td className="px-6 py-4 text-center">
                         <button
                           onClick={() => deleteStudent(student.id)}
@@ -1357,7 +1357,7 @@ export default function GradingSystem() {
                   <div>
                     <p className="text-xs font-mono text-slate-400 dark:text-slate-500 mb-0.5">{student.code}</p>
                     <p className="font-bold text-slate-800 dark:text-slate-100">{student.name}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{student.class.split('/')[0]}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{(student.class || '').split('/')[0]}</p>
                   </div>
                   <button
                     onClick={() => deleteStudent(student.id)}
@@ -1608,53 +1608,44 @@ export default function GradingSystem() {
 
       const W = 595.28, H = 841.89;
       const black = rgb(0, 0, 0);
-      const orange = rgb(1, 0.647, 0.157);  // สีส้ม header
-      const white = rgb(1, 1, 1);
-      const stripe = rgb(0.93, 0.93, 0.93);
+      const orange = rgb(0.99, 0.83, 0.70);
+      const grayBg = rgb(0.9, 0.9, 0.9);
 
-      // Helper: draw text (clamp to width)
-      const txt = (pg: any, text: string, x: number, y: number, sz: number, bold = false, clr = black, maxW = 0) => {
-        let str = String(text ?? '');
-        if (maxW > 0) {
-          while (str.length > 1) {
-            const w = (bold ? fBold : fReg).widthOfTextAtSize(str, sz);
-            if (w <= maxW) break;
-            str = str.slice(0, -1);
-          }
-        }
-        pg.drawText(str, { x, y, size: sz, font: bold ? fBold : fReg, color: clr });
+      // Helper: draw text
+      const txt = (pg: any, text: string, x: number, y: number, sz: number, bold = false, clr = black) => {
+        pg.drawText(String(text ?? ''), { x, y, size: sz, font: bold ? fBold : fReg, color: clr });
+      };
+      const drawTextCenter = (pg: any, text: string, x1: number, x2: number, y: number, sz: number, bold = false, clr = black) => {
+        const str = String(text ?? '');
+        const w = (bold ? fBold : fReg).widthOfTextAtSize(str, sz);
+        txt(pg, str, x1 + (x2 - x1 - w) / 2, y, sz, bold, clr);
+      };
+      const drawTextMultilineCenter = (pg: any, text: string, x1: number, x2: number, centerY: number, sz: number, bold = false, clr = black) => {
+        const lines = String(text ?? '').split('\n');
+        const totalH = lines.length * sz;
+        let startY = centerY + totalH / 2 - sz * 0.8;
+        lines.forEach(ln => {
+          drawTextCenter(pg, ln, x1, x2, startY, sz, bold, clr);
+          startY -= sz;
+        });
       };
       const hline = (pg: any, x1: number, y1: number, x2: number, y2: number, thick = 0.5, clr = black) =>
         pg.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: thick, color: clr });
       const fillRect = (pg: any, x: number, y: number, w: number, h: number, clr: any) =>
         pg.drawRectangle({ x, y, width: w, height: h, color: clr, borderWidth: 0 });
-      const borderRect = (pg: any, x: number, y: number, w: number, h: number, thick = 0.5) =>
-        pg.drawRectangle({ x, y, width: w, height: h, borderWidth: thick, borderColor: black, color: white });
 
       // ------ Column widths ------
       const mL = 25, mR = W - 25;
       const tableW = mR - mL;
-      // [idx, รหัสวิชา, รายวิชา, ประเภท, น้ำหนัก, ภ1เต็ม, ภ1ได้, ภ2เต็ม, ภ2ได้, รวมเต็ม, รวมได้, ระดับผล, หมายเหตุ]
-      const cols = [20, 52, 115, 42, 35, 28, 28, 28, 28, 28, 28, 38, 37];
+      // [ลำดับ, รหัสวิชา, รายวิชา, ประเภท, น้ำหนัก, ภ1เต็ม, ภ1ได้, ภ2เต็ม, ภ2ได้, รวมเต็ม, รวมได้, ระดับผล, หมายเหตุ]
+      const cols = [25, 45, 140, 45, 35, 26, 26, 26, 26, 26, 26, 40, 59.28];
       const colX: number[] = [mL];
       cols.forEach((c, i) => colX.push(colX[i] + c));
 
-      const drawCell = (pg: any, colIdx: number, y: number, rowH: number, text: string, sz = 9, bold = false, align: 'left' | 'center' = 'left', bg?: any) => {
-        const x = colX[colIdx];
-        const w = cols[colIdx];
-        if (bg) fillRect(pg, x, y - rowH, w, rowH, bg);
-        hline(pg, x, y, colX[colIdx + 1], y, 0.4);
-        hline(pg, x, y - rowH, colX[colIdx + 1], y - rowH, 0.4);
-        hline(pg, x, y, x, y - rowH, 0.4);
-        if (colIdx === cols.length - 1) hline(pg, colX[colIdx + 1], y, colX[colIdx + 1], y - rowH, 0.4);
-        const tw = bold ? fBold.widthOfTextAtSize(text, sz) : fReg.widthOfTextAtSize(String(text ?? ''), sz);
-        const tx = align === 'center' ? x + (w - tw) / 2 : x + 2;
-        txt(pg, text, tx, y - rowH + 3, sz, bold, black, w - 4);
-      };
-
-      const ROW_H = 14.5;
-      const HDR2_H = 16;
-      const HDR3_H = 28;
+      const ROW_H = 15;
+      const HDR_ROW1_H = 18;
+      const HDR_ROW2_H = 18;
+      const HDR_H = HDR_ROW1_H + HDR_ROW2_H;
 
       // Sort subjects
       const sortedSubjs = [...subjects].sort((a, b) => {
@@ -1666,101 +1657,79 @@ export default function GradingSystem() {
       for (let si = 0; si < targets.length; si++) {
         const student = targets[si];
         const pg = pdfDoc.addPage([W, H]);
-        let curY = H - 18;
+        let curY = H - 25;
 
-        // ── Title Row 1: ปพ.6 label top right ──
-        txt(pg, 'ป.6', mR - 25, curY - 5, 12, true, black);
-
-        // ── Title Row 2: Title centered ──
+        // ── Title Rows ──
+        txt(pg, 'ป.6', mR - 20, curY, 12, true, black);
         const title = 'แบบรายงานผลพัฒนาคุณภาพผู้เรียนรายบุคคล ( ปพ.6 )';
-        const titleW = fBold.widthOfTextAtSize(title, 14);
-        txt(pg, title, (W - titleW) / 2, curY - 5, 14, true, black);
-        curY -= 20;
+        const titleW = fBold.widthOfTextAtSize(title, 16);
+        txt(pg, title, (W - titleW) / 2, curY, 16, true, black);
+        curY -= 25;
 
         // ── Student info row ──
-        txt(pg, `ชื่อ-สกุล  ${student.name}`, mL, curY, 11, false);
-        txt(pg, `รหัสประจำตัว  ${student.code}`, mL + 200, curY, 11, false);
-        txt(pg, `ชั้น  ${(student.class || '').split('/')[0]}`, mL + 370, curY, 11, false);
-        txt(pg, `ปีการศึกษา  ${academicYear}`, mL + 430, curY, 11, false);
-        curY -= 16;
+        txt(pg, `ชื่อ-สกุล  ${student.name}`, mL + 5, curY, 12, false);
+        txt(pg, `รหัสประจำตัว  ${student.code}`, mL + 205, curY, 12, false);
+        txt(pg, `ชั้น  ${(student.class || '').split('/')[0]}`, mL + 365, curY, 12, false);
+        txt(pg, `ปีการศึกษา  ${academicYear}`, mL + 435, curY, 12, false);
+        curY -= 12;
 
-        // ── Header Row 3: Main column headers (orange bg) ──
-        const hdrY = curY;
-        // Draw full orange background for entire header area (3 rows worth)
-        fillRect(pg, mL, hdrY - HDR3_H - HDR2_H, tableW, HDR3_H + HDR2_H, orange);
+        // ── Table Header ──
+        const yTop = curY;
+        const yMid = yTop - HDR_ROW1_H;
+        const yBot = yTop - HDR_H;
 
-        // Header text row 1 (top merged)
-        const hdrLabels = [
-          { col: 0, text: 'ลำดับ\nที่', rows: 2 },
-          { col: 1, text: 'รหัสวิชา', rows: 2 },
-          { col: 2, text: 'รายวิชา', rows: 2 },
-          { col: 3, text: 'ประเภท', rows: 2 },
-          { col: 4, text: 'น้ำหนัก\nหน่วยกิต', rows: 2 },
-          { col: 5, text: 'ภาคเรียนที่ 1', span: 2, rows: 1 },
-          { col: 7, text: 'ภาคเรียนที่ 2', span: 2, rows: 1 },
-          { col: 9, text: 'ร้อยละคะแนนทั้งปี', span: 2, rows: 1 },
-          { col: 11, text: 'ระดับผล\nการเรียน', rows: 2 },
-          { col: 12, text: 'หมายเหตุ', rows: 2 },
-        ];
+        fillRect(pg, colX[0], yBot, tableW, HDR_H, orange);
 
-        // Draw sub-column headers for sem1, sem2, total
+        hline(pg, colX[0], yTop, colX[13], yTop, 0.8);
+        hline(pg, colX[0], yBot, colX[13], yBot, 0.8);
+        hline(pg, colX[5], yMid, colX[11], yMid, 0.5);
+
+        const fullVCols = [0, 1, 2, 3, 4, 5, 7, 9, 11, 12, 13];
+        fullVCols.forEach(c => hline(pg, colX[c], yTop, colX[c], yBot, c === 0 || c === 13 ? 0.8 : 0.5));
+        const partVCols = [6, 8, 10];
+        partVCols.forEach(c => hline(pg, colX[c], yMid, colX[c], yBot, 0.5));
+
+        drawTextMultilineCenter(pg, "ลำดับ\nที่", colX[0], colX[1], yTop - HDR_H / 2, 10, true);
+        drawTextMultilineCenter(pg, "รหัสวิชา", colX[1], colX[2], yTop - HDR_H / 2, 11, true);
+        drawTextMultilineCenter(pg, "รายวิชา", colX[2], colX[3], yTop - HDR_H / 2, 11, true);
+        drawTextMultilineCenter(pg, "ประเภท", colX[3], colX[4], yTop - HDR_H / 2, 11, true);
+        drawTextMultilineCenter(pg, "น้ำหนัก\nหน่วยกิต", colX[4], colX[5], yTop - HDR_H / 2, 10, true);
+
+        drawTextCenter(pg, "ภาคเรียนที่ 1", colX[5], colX[7], yMid + 4, 11, true);
+        drawTextCenter(pg, "ภาคเรียนที่ 2", colX[7], colX[9], yMid + 4, 11, true);
+        drawTextCenter(pg, "ร้อยละคะแนนทั้งปี", colX[9], colX[11], yMid + 4, 10, true);
+
+        drawTextMultilineCenter(pg, "ระดับผล\nการเรียน", colX[11], colX[12], yTop - HDR_H / 2, 10, true);
+        drawTextMultilineCenter(pg, "หมายเหตุ", colX[12], colX[13], yTop - HDR_H / 2, 11, true);
+
         const subHdr = [
-          { col: 5, text: 'เต็ม' }, { col: 6, text: 'ได้' },
-          { col: 7, text: 'เต็ม' }, { col: 8, text: 'ได้' },
-          { col: 9, text: 'เต็ม' }, { col: 10, text: 'ได้' },
+          { c: 5, t: 'เต็ม' }, { c: 6, t: 'ได้' },
+          { c: 7, t: 'เต็ม' }, { c: 8, t: 'ได้' },
+          { c: 9, t: 'เต็ม' }, { c: 10, t: 'ได้' },
         ];
-
-        // Row 3a top headers
-        const r3aY = hdrY;
-        hdrLabels.forEach(h => {
-          const spanW = h.span ? cols.slice(h.col, h.col + h.span).reduce((a, b) => a + b, 0) : cols[h.col];
-          const cx = colX[h.col] + spanW / 2;
-          if (h.rows === 2) {
-            // vertically center over 2 rows
-            const lines2 = h.text.split('\n');
-            lines2.forEach((ln, li) => {
-              const lw = fBold.widthOfTextAtSize(ln, 8.5);
-              txt(pg, ln, cx - lw / 2, r3aY - 6 - li * 10, 8.5, true, black);
-            });
-          } else {
-            // single row at top
-            const lw = fBold.widthOfTextAtSize(h.text, 8.5);
-            txt(pg, h.text, cx - lw / 2, r3aY - 6, 8.5, true, black);
-          }
-        });
-
-        // Row 3b sub-headers (เต็ม/ได้)
-        const r3bY = hdrY - HDR3_H;
         subHdr.forEach(h => {
-          const lw = fBold.widthOfTextAtSize(h.text, 8.5);
-          const cx = colX[h.col] + cols[h.col] / 2;
-          txt(pg, h.text, cx - lw / 2, r3bY - 5, 8.5, true, black);
+          drawTextCenter(pg, h.t, colX[h.c], colX[h.c + 1], yBot + 4, 10, true);
         });
 
-        // Draw grid lines for header
-        const hdrBottom = hdrY - HDR3_H - HDR2_H;
-        hline(pg, mL, hdrY, mR, hdrY, 0.7);
-        hline(pg, mL, hdrY - HDR3_H, mR, hdrY - HDR3_H, 0.5);
-        hline(pg, mL, hdrBottom, mR, hdrBottom, 0.7);
-        colX.forEach(x => hline(pg, x, hdrY, x, hdrBottom, 0.4));
-
-        curY = hdrBottom;
+        curY = yBot;
+        const dataTopY = curY;
 
         // ── Data Rows ──
         let rowNum = 0;
+        let totalRowsDrawn = 0;
+
         sortedSubjs.forEach((sub) => {
-          if (curY < 40) return; // page overflow guard
+          if (curY < 60) return; // Prevent overflow
 
           const s1 = getScore(student.id, sub.id);
-          const s1Max = sub.semester === 1 ? sub.maxScore : 0;
-          const s2Max = sub.semester === 2 ? sub.maxScore : 0;
-          // Find matching subject for other semester
           const matchedSub = subjects.find(s => (s.code || s.name) === (sub.code || sub.name) && s.semester !== sub.semester);
           const s2 = matchedSub ? getScore(student.id, matchedSub.id) : 0;
+
           const sem1Score = sub.semester === 1 ? s1 : (matchedSub ? s2 : 0);
           const sem2Score = sub.semester === 2 ? s1 : (matchedSub ? s2 : 0);
           const sem1Max = sub.semester === 1 ? sub.maxScore : (matchedSub?.semester === 1 ? matchedSub.maxScore : 0);
           const sem2Max = sub.semester === 2 ? sub.maxScore : (matchedSub?.semester === 2 ? matchedSub.maxScore : 0);
+
           const totalGot = sem1Score + sem2Score;
           const totalMax = sem1Max + sem2Max;
           const yearPct = totalMax > 0 ? Math.round((totalGot / totalMax) * 100) : 0;
@@ -1773,48 +1742,63 @@ export default function GradingSystem() {
           }
 
           rowNum++;
+          totalRowsDrawn++;
           const isAct = sub.type === 'กิจกรรม';
-          const rowBg = isAct ? stripe : white;
-
-          // Draw row
-          const rowY = curY;
-          // Skip duplicate subjects (already processed in pair)
-          drawCell(pg, 0, rowY, ROW_H, rowNum.toString(), 9, false, 'center', rowBg);
-          drawCell(pg, 1, rowY, ROW_H, sub.code || '', 8.5, false, 'left', rowBg);
-          drawCell(pg, 2, rowY, ROW_H, sub.name, 9, false, 'left', rowBg);
-          drawCell(pg, 3, rowY, ROW_H, sub.type || 'พื้นฐาน', 8.5, false, 'center', rowBg);
-          // น้ำหนัก/หน่วยกิต format: "maxScore/credit"
-          const wt = sub.type === 'กิจกรรม' ? (sub.maxScore || '-').toString() : `${sub.maxScore}/${sub.credit || 1}`;
-          drawCell(pg, 4, rowY, ROW_H, wt, 9, false, 'center', rowBg);
 
           if (isAct) {
-            // กิจกรรม: no scores
-            for (let c = 5; c <= 10; c++) drawCell(pg, c, rowY, ROW_H, '', 9, false, 'center', stripe);
-            drawCell(pg, 11, rowY, ROW_H, grade, 9, false, 'center', rowBg);
-          } else {
-            drawCell(pg, 5, rowY, ROW_H, sem1Max > 0 ? sem1Max.toString() : '-', 9, false, 'center');
-            drawCell(pg, 6, rowY, ROW_H, sem1Score > 0 ? sem1Score.toString() : '-', 9, false, 'center');
-            drawCell(pg, 7, rowY, ROW_H, sem2Max > 0 ? sem2Max.toString() : '-', 9, false, 'center');
-            drawCell(pg, 8, rowY, ROW_H, sem2Score > 0 ? sem2Score.toString() : '-', 9, false, 'center');
-            drawCell(pg, 9, rowY, ROW_H, totalMax > 0 ? totalMax.toString() : '-', 9, false, 'center');
-            drawCell(pg, 10, rowY, ROW_H, totalMax > 0 ? totalGot.toString() : '-', 9, false, 'center');
-            drawCell(pg, 11, rowY, ROW_H, grade, 9, false, 'center');
+            fillRect(pg, colX[5], curY - ROW_H, colX[11] - colX[5], ROW_H, grayBg);
           }
-          drawCell(pg, 12, rowY, ROW_H, '', 9, false, 'left', rowBg);
+
+          drawTextCenter(pg, String(rowNum), colX[0], colX[1], curY - ROW_H + 4, 11);
+
+          let c1 = sub.code || '';
+          if (fReg.widthOfTextAtSize(c1, 10.5) > cols[1] - 4) c1 = c1.substring(0, c1.length - 1);
+          txt(pg, c1, colX[1] + 3, curY - ROW_H + 4, 10.5);
+
+          let c2 = sub.name;
+          while (fReg.widthOfTextAtSize(c2, 11) > cols[2] - 4 && c2.length > 0) c2 = c2.substring(0, c2.length - 1);
+          txt(pg, c2, colX[2] + 4, curY - ROW_H + 4, 11);
+
+          drawTextCenter(pg, sub.type || 'พื้นฐาน', colX[3], colX[4], curY - ROW_H + 4, 11);
+          const wt = sub.type === 'กิจกรรม' ? String(sub.maxScore || '-') : `${sub.maxScore}/${sub.credit || 1}`;
+          drawTextCenter(pg, wt, colX[4], colX[5], curY - ROW_H + 4, 11);
+
+          if (isAct) {
+            drawTextCenter(pg, grade, colX[11], colX[12], curY - ROW_H + 4, 11);
+          } else {
+            drawTextCenter(pg, sem1Max > 0 ? String(sem1Max) : '-', colX[5], colX[6], curY - ROW_H + 4, 11);
+            drawTextCenter(pg, sem1Score > 0 ? String(sem1Score) : '-', colX[6], colX[7], curY - ROW_H + 4, 11);
+            drawTextCenter(pg, sem2Max > 0 ? String(sem2Max) : '-', colX[7], colX[8], curY - ROW_H + 4, 11);
+            drawTextCenter(pg, sem2Score > 0 ? String(sem2Score) : '-', colX[8], colX[9], curY - ROW_H + 4, 11);
+            drawTextCenter(pg, totalMax > 0 ? String(totalMax) : '-', colX[9], colX[10], curY - ROW_H + 4, 11);
+            drawTextCenter(pg, totalMax > 0 ? String(totalGot) : '-', colX[10], colX[11], curY - ROW_H + 4, 11);
+            drawTextCenter(pg, grade, colX[11], colX[12], curY - ROW_H + 4, 11);
+          }
 
           curY -= ROW_H;
         });
 
-        // Empty rows (buffer)
-        for (let i = 0; i < 4; i++) {
-          if (curY < 40) break;
-          drawCell(pg, 0, curY, ROW_H, '', 9, false, 'center');
-          for (let c = 1; c <= 12; c++) drawCell(pg, c, curY, ROW_H, '', 9, false, 'center');
+        // Fill empty rows until at least 20 rows are drawn
+        const emptyRows = Math.max(0, 20 - totalRowsDrawn);
+        for (let i = 0; i < emptyRows; i++) {
+          if (curY < 60) break;
           curY -= ROW_H;
         }
 
+        // ── Draw Data Grid Lines ──
+        let ry = dataTopY;
+        while (ry >= curY) {
+          hline(pg, colX[0], ry, colX[13], ry, 0.5);
+          ry -= ROW_H;
+        }
+        for (let c = 0; c <= 13; c++) {
+          hline(pg, colX[c], dataTopY, colX[c], curY, c === 0 || c === 13 ? 0.8 : 0.5);
+        }
+        // Bottom border (thicker)
+        hline(pg, colX[0], curY, colX[13], curY, 0.8);
+
         // ── GPA Row ──
-        curY -= 8;
+        curY -= 14;
         let totalGPts = 0, gCount = 0;
         const subjectGroups2: Record<string, any> = {};
         subjects.forEach(sub => {
@@ -1832,15 +1816,15 @@ export default function GradingSystem() {
           if (max > 0) { const g = parseFloat(calculateGrade(Math.round((tot / max) * 100))); if (!isNaN(g)) { totalGPts += g; gCount++; } }
         });
         const gpa = gCount > 0 ? (totalGPts / gCount).toFixed(2) : '-';
-        txt(pg, `ผลการเรียนเฉลี่ย (GPA) : ${gpa}`, mL, curY, 10, true, black);
-        curY -= 20;
+        txt(pg, `ผลการเรียนเฉลี่ย (GPA) : ${gpa}`, mL, curY, 11, true, black);
+        curY -= 30;
 
-        // ── Signature ──
-        txt(pg, 'ลงชื่อ ......................................................', mL + 50, curY, 10, false);
-        txt(pg, 'ลงชื่อ ......................................................', mL + 300, curY, 10, false);
-        curY -= 14;
-        txt(pg, '(ครูที่ปรึกษา)', mL + 95, curY, 10, false);
-        txt(pg, '(ผู้อำนวยการโรงเรียน)', mL + 340, curY, 10, false);
+        // ── Signatures ──
+        txt(pg, 'ลงชื่อ ................................................................', mL + 40, curY, 11, false);
+        txt(pg, 'ลงชื่อ ................................................................', mL + 320, curY, 11, false);
+        curY -= 15;
+        txt(pg, '(ครูประจำชั้น)', mL + 90, curY, 11, false);
+        txt(pg, '(ผู้อำนวยการโรงเรียน)', mL + 360, curY, 11, false);
       }
 
       // ── Download PDF ──
@@ -1849,7 +1833,7 @@ export default function GradingSystem() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `ปพ6_${targets.length === 1 ? targets[0].name : 'ทุกคน'}_${academicYear}.pdf`;
+      a.download = `ปพ6_${targets.length === 1 ? targets[0].name : 'ทั้งหมด'}_${academicYear}.pdf`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
       setIsReportModalOpen(false);
