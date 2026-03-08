@@ -798,7 +798,7 @@ export default function GradingSystem() {
       const bw = 235;
       rect(p1, bx, y - 148, bw, 136);
       txt(p1, `ชื่อ  ${student.name}`, bx + 5, y - 24, 12, false);
-      txt(p1, `ชื่อสกุล  ${student.class}`, bx + 5, y - 38, 12, false);
+      txt(p1, `ชั้น  ${(student.class || '').split('/')[0]}`, bx + 5, y - 38, 12, false);
       txt(p1, `เลขประจำตัวนักเรียน  ${student.code}`, bx + 5, y - 52, 12, false);
       txt(p1, `เลขประจำตัวประชาชน  -`, bx + 5, y - 66, 12, false);
       txt(p1, `เกิดวันที่  -  เดือน  -  พ.ศ.  -`, bx + 5, y - 80, 12, false);
@@ -1680,7 +1680,7 @@ export default function GradingSystem() {
         // ── Student info row ──
         txt(pg, `ชื่อ-สกุล  ${student.name}`, mL, curY, 11, false);
         txt(pg, `รหัสประจำตัว  ${student.code}`, mL + 200, curY, 11, false);
-        txt(pg, `ชั้น  ${student.class.split('/')[0]}`, mL + 370, curY, 11, false);
+        txt(pg, `ชั้น  ${(student.class || '').split('/')[0]}`, mL + 370, curY, 11, false);
         txt(pg, `ปีการศึกษา  ${academicYear}`, mL + 430, curY, 11, false);
         curY -= 16;
 
@@ -1845,7 +1845,7 @@ export default function GradingSystem() {
 
       // ── Download PDF ──
       const pdfBytes = await pdfDoc.save();
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -2372,7 +2372,7 @@ export default function GradingSystem() {
                     ยกเลิก
                   </button>
                   <button
-                    onClick={generatePDF}
+                    onClick={() => generatePDF()}
                     disabled={isGeneratingPDF}
                     className="flex-1 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium flex items-center justify-center gap-2 disabled:opacity-50"
                   >
