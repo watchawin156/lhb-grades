@@ -66,6 +66,54 @@ interface ScoreRecord {
   year: number;
 }
 
+// Helper Components for Sidebar
+const SidebarItem = ({ icon: Icon, label, active, onClick, hasSubmenu, isOpen }: any) => (
+  <button
+    onClick={onClick}
+    className={cn(
+      "w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 group relative",
+      active
+        ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 shadow-sm"
+        : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100"
+    )}
+    title={!label ? "เมนู" : undefined}
+  >
+    <div className="flex items-center gap-3">
+      <Icon size={20} className={cn("transition-colors", active ? "text-emerald-600" : "text-slate-400 group-hover:text-slate-600")} />
+      {label && <span className="font-medium text-sm whitespace-nowrap overflow-hidden">{label}</span>}
+    </div>
+    {hasSubmenu && label && (
+      <motion.div
+        animate={{ rotate: isOpen ? 90 : 0 }}
+        className="text-slate-400"
+      >
+        <ChevronRight size={16} />
+      </motion.div>
+    )}
+    {active && <motion.div layoutId="activeTab" className="absolute left-0 w-1 h-6 bg-emerald-600 rounded-r-full" />}
+  </button>
+);
+
+const SidebarSubItem = ({ label, active, onClick }: any) => (
+  <button
+    onClick={onClick}
+    className={cn(
+      "w-full text-left pl-12 pr-4 py-2 text-sm rounded-lg transition-colors relative",
+      active
+        ? "text-emerald-700 dark:text-emerald-400 font-medium bg-emerald-50/50 dark:bg-emerald-900/20"
+        : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800"
+    )}
+  >
+    {active && (
+      <motion.div
+        layoutId="activeSubItem"
+        className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-4 bg-emerald-500 rounded-r-full"
+      />
+    )}
+    <span className="truncate block">{label}</span>
+  </button>
+);
+
 export default function GradingSystem() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [activeSemester, setActiveSemester] = useState<number>(1);
@@ -105,6 +153,7 @@ export default function GradingSystem() {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [reportSelectedStudent, setReportSelectedStudent] = useState<string>('all');
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
 
   // New Modals State
   const [isClearDataModalOpen, setIsClearDataModalOpen] = useState(false);
@@ -322,7 +371,7 @@ export default function GradingSystem() {
       return;
     }
 
-    const imported = data.map((row: any, index) => {
+    const importedOrigin = data.map((row: any, index) => {
       const normalizedRow: any = {};
       Object.keys(row).forEach(key => {
         normalizedRow[key.trim()] = row[key];
@@ -350,6 +399,12 @@ export default function GradingSystem() {
         year: academicYear
       };
     }).filter(s => s.name);
+
+    // Filter out Kindergarten 2 & 3
+    const imported = importedOrigin.filter(s =>
+      !s.class.includes('อ.2') &&
+      !s.class.includes('อ.3')
+    );
 
     if (imported.length === 0) {
       alert('ไม่สามารถนำเข้าข้อมูลได้ กรุณาตรวจสอบหัวตาราง\nตัวอย่างที่รองรับ: รหัสนักเรียน, ชื่อ, นามสกุล, ชั้น, ห้อง');
@@ -626,6 +681,147 @@ export default function GradingSystem() {
     }
   };
 
+  const generateTranscriptPDF = async (student: Student) => {
+    setIsGeneratingPDF(true);
+    try {
+      const subjectGroups: Record<string, any> = {};
+      subjects.forEach(sub => {
+        const key = sub.code || sub.name;
+        if (!subjectGroups[key]) {
+          subjectGroups[key] = {
+            code: sub.code,
+            name: sub.name,
+            type: sub.type || 'พื้นฐาน',
+            sem1: null,
+            sem2: null,
+            credit: sub.credit || 1
+          };
+        }
+        if (sub.semester === 1) subjectGroups[key].sem1 = sub;
+        if (sub.semester === 2) subjectGroups[key].sem2 = sub;
+      });
+
+      const sortedSubjs = Object.values(subjectGroups).sort((a: any, b: any) => {
+        const typeOrder: Record<string, number> = { 'พื้นฐาน': 1, 'เพิ่มเติม': 2, 'กิจกรรม': 3 };
+        const typeA = a.type || 'พื้นฐาน';
+        const typeB = b.type || 'พื้นฐาน';
+        if (typeOrder[typeA] !== typeOrder[typeB]) {
+          return (typeOrder[typeA] || 99) - (typeOrder[typeB] || 99);
+        }
+        return (a.code || "").localeCompare(b.code || "");
+      });
+
+      const tableBody = [
+        [
+          { text: 'ที่', style: 'tableHeader' },
+          { text: 'รหัส / รายวิชา', style: 'tableHeader', alignment: 'left' },
+          { text: 'ประเภท', style: 'tableHeader' },
+          { text: 'หน่วยกิต', style: 'tableHeader' },
+          { text: 'เทอม 1', style: 'tableHeader' },
+          { text: 'เทอม 2', style: 'tableHeader' },
+          { text: 'รวม', style: 'tableHeader' },
+          { text: 'เกรด', style: 'tableHeader' }
+        ]
+      ];
+
+      sortedSubjs.forEach((sub: any, idx) => {
+        const s1 = sub.sem1 ? getScore(student.id, sub.sem1.id) : null;
+        const s2 = sub.sem2 ? getScore(student.id, sub.sem2.id) : null;
+        const s1Max = sub.sem1?.maxScore || 0;
+        const s2Max = sub.sem2?.maxScore || 0;
+        const totalGot = (s1 || 0) + (s2 || 0);
+        const totalMax = s1Max + s2Max;
+        const percent = totalMax > 0 ? Math.round((totalGot / totalMax) * 100) : 0;
+
+        let grade = '-';
+        if (sub.type === 'กิจกรรม') {
+          grade = totalMax > 0 ? (percent >= 50 ? 'ผ' : 'มผ') : '-';
+        } else {
+          grade = totalMax > 0 ? calculateGrade(percent) : '-';
+        }
+
+        tableBody.push([
+          { text: (idx + 1).toString(), style: 'tableCell' },
+          {
+            stack: [
+              { text: sub.name, bold: true, color: '#000000' },
+              { text: sub.code, fontSize: 8, color: '#444444' }
+            ],
+            alignment: 'left',
+            style: 'tableCell'
+          },
+          { text: sub.type, style: 'tableCell' },
+          { text: sub.credit.toString(), style: 'tableCell' },
+          { text: s1 !== null ? s1.toString() : '-', style: 'tableCell' },
+          { text: s2 !== null ? s2.toString() : '-', style: 'tableCell' },
+          { text: totalMax > 0 ? percent.toString() : '-', style: 'tableCell' },
+          { text: grade, style: 'tableCell', bold: true }
+        ] as any);
+      });
+
+      const docDefinition: TDocumentDefinitions = {
+        pageSize: 'A4',
+        pageMargins: [40, 40, 40, 40],
+        content: [
+          { text: 'รายงานผลการเรียนรายบุคคล (ปพ.1)', style: 'header' },
+          {
+            columns: [
+              {
+                width: '*',
+                stack: [
+                  { text: `ชื่อ-นามสกุล: ${student.name}`, style: 'subheader' },
+                  { text: `ชั้น: ${student.class}/${student.room || '1'}`, style: 'subheader' }
+                ]
+              },
+              {
+                width: 'auto',
+                stack: [
+                  { text: `เลขประจำตัว: ${student.code}`, style: 'subheader' },
+                  { text: `ปีการศึกษา: ${academicYear}`, style: 'subheader' }
+                ],
+                alignment: 'right'
+              }
+            ],
+            margin: [0, 0, 0, 20]
+          },
+          {
+            table: {
+              headerRows: 1,
+              widths: [20, '*', 45, 40, 40, 40, 30, 35],
+              body: tableBody
+            },
+            layout: {
+              hLineWidth: () => 0.5,
+              vLineWidth: () => 0.5,
+              hLineColor: () => '#eee',
+              vLineColor: () => '#eee',
+              paddingLeft: () => 8,
+              paddingRight: () => 8,
+              paddingTop: () => 8,
+              paddingBottom: () => 8
+            }
+          } as any
+        ],
+        styles: {
+          header: { fontSize: 22, bold: true, alignment: 'center', margin: [0, 0, 0, 20], font: 'THSarabunNew', color: '#000000' },
+          subheader: { fontSize: 16, font: 'THSarabunNew', margin: [0, 2, 0, 2], color: '#000000' },
+          tableHeader: { fontSize: 12, bold: true, font: 'THSarabunNew', alignment: 'center', color: '#333333' },
+          tableCell: { fontSize: 14, font: 'THSarabunNew', alignment: 'center', color: '#000000' }
+        },
+        defaultStyle: { font: 'THSarabunNew', color: '#000000' }
+      };
+
+      const pdfDocGenerator = pdfMake.createPdf(docDefinition);
+      pdfDocGenerator.getDataUrl((dataUrl: string) => {
+        setPdfPreviewUrl(dataUrl);
+        setIsGeneratingPDF(false);
+      });
+    } catch (e) {
+      console.error(e);
+      setIsGeneratingPDF(false);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent, studentIndex: number, subjectIndex: number, totalStudents: number, totalSubjects: number) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -659,7 +855,7 @@ export default function GradingSystem() {
       <div className="space-y-6">
         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <FileBarChart className="text-emerald-600" />
               รายงานผลการเรียนรายบุคคล (ปพ.1 / แบบละเอียด)
             </h2>
@@ -667,14 +863,14 @@ export default function GradingSystem() {
 
           <div className="flex flex-col md:flex-row gap-4 mb-8">
             <div className="flex-1 max-w-xs">
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">ค้นหาและเลือกห้อง (ชั้น)</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">ค้นหาและเลือกห้อง (ชั้น)</label>
               <select
                 value={selectedTranscriptRoom}
                 onChange={(e) => {
                   setSelectedTranscriptRoom(e.target.value);
                   setSelectedTranscriptStudentId('');
                 }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
               >
                 <option value="all">-- ทุกห้อง --</option>
                 {uniqueRooms.map(room => (
@@ -683,11 +879,20 @@ export default function GradingSystem() {
               </select>
             </div>
             <div className="flex-1">
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">ค้นหาและเลือกนักเรียน</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">ค้นหาและเลือกนักเรียน</label>
               <select
                 value={selectedTranscriptStudentId || ''}
-                onChange={(e) => setSelectedTranscriptStudentId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                onChange={(e) => {
+                  const sid = e.target.value;
+                  setSelectedTranscriptStudentId(sid);
+                  const student = students.find(s => s.id === sid);
+                  if (student) {
+                    generateTranscriptPDF(student);
+                  } else {
+                    setPdfPreviewUrl(null);
+                  }
+                }}
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-bold"
               >
                 <option value="">-- เลือกนักเรียน --</option>
                 {filteredStudentsByRoom.sort((a, b) => a.name.localeCompare(b.name, 'th')).map(student => (
@@ -699,130 +904,54 @@ export default function GradingSystem() {
             </div>
           </div>
 
-          {selectedStudent ? (() => {
-            const subjectGroups: Record<string, any> = {};
-            subjects.forEach(sub => {
-              const key = sub.code || sub.name;
-              if (!subjectGroups[key]) {
-                subjectGroups[key] = {
-                  code: sub.code,
-                  name: sub.name,
-                  type: sub.type || 'พื้นฐาน',
-                  sem1: null,
-                  sem2: null
-                };
-              }
-              if (sub.semester === 1) subjectGroups[key].sem1 = sub;
-              if (sub.semester === 2) subjectGroups[key].sem2 = sub;
-            });
-
-            const combinedSubjects = Object.values(subjectGroups).sort((a: any, b: any) => {
-              const typeOrder: Record<string, number> = { 'พื้นฐาน': 1, 'เพิ่มเติม': 2, 'กิจกรรม': 3 };
-              const typeA = a.type || 'พื้นฐาน';
-              const typeB = b.type || 'พื้นฐาน';
-              if (typeOrder[typeA] !== typeOrder[typeB]) {
-                return (typeOrder[typeA] || 99) - (typeOrder[typeB] || 99);
-              }
-              return (a.code || "").localeCompare(b.code || "");
-            });
-
-            let totalGradePoint = 0;
-            let gradedSubjectsCount = 0;
-
-            return (
-              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                  <div>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">ชื่อ-นามสกุล / ชั้น</p>
-                    <p className="text-xl font-bold text-slate-800">{selectedStudent.name} ({selectedStudent.class}{selectedStudent.room ? `/${selectedStudent.room}` : ''})</p>
+          {selectedStudent ? (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-600 rounded-full flex items-center justify-center text-white font-bold">
+                    {selectedStudent.name.substring(0, 1)}
                   </div>
                   <div>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">เลขประจำตัว</p>
-                    <p className="text-xl font-bold text-slate-800">{selectedStudent.code}</p>
+                    <h4 className="font-bold text-slate-800 dark:text-slate-100">{selectedStudent.name}</h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">เลขประจำตัว: {selectedStudent.code} | ชั้น {selectedStudent.class}/{selectedStudent.room || '1'}</p>
                   </div>
                 </div>
+                <button
+                  onClick={() => generateTranscriptPDF(selectedStudent)}
+                  className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-slate-50 transition-all"
+                >
+                  <Save size={16} className="text-emerald-500" />
+                  รีเฟรช PDF
+                </button>
+              </div>
 
-                <div className="overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse">
-                      <thead>
-                        <tr className="bg-slate-800 text-white text-[10px] uppercase tracking-widest text-center whitespace-nowrap">
-                          <th className="px-4 py-4 font-bold">ที่</th>
-                          <th className="px-4 py-4 font-bold text-left">รหัส / รายวิชา</th>
-                          <th className="px-4 py-4 font-bold">ประเภท</th>
-                          <th className="px-4 py-4 font-bold">นก. / น้ำหนัก</th>
-                          <th className="px-4 py-4 font-bold">ภาคเรียนที่ 1</th>
-                          <th className="px-4 py-4 font-bold">ภาคเรียนที่ 2</th>
-                          <th className="px-4 py-4 font-bold">รวม (100)</th>
-                          <th className="px-4 py-4 font-bold">ระดับผลการเรียน</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-sm">
-                        {combinedSubjects.map((sub, index) => {
-                          const sem1Score = sub.sem1 ? getScore(selectedStudent.id, sub.sem1.id) : null;
-                          const sem2Score = sub.sem2 ? getScore(selectedStudent.id, sub.sem2.id) : null;
-
-                          const sem1Max = sub.sem1?.maxScore || 0;
-                          const sem2Max = sub.sem2?.maxScore || 0;
-
-                          const totalGot = (sem1Score || 0) + (sem2Score || 0);
-                          const totalMax = sem1Max + sem2Max;
-
-                          const yearlyPercent = totalMax > 0 ? Math.round((totalGot / totalMax) * 100) : 0;
-
-                          let grade = '-';
-                          if (sub.type === 'กิจกรรม') {
-                            grade = totalMax > 0 ? (yearlyPercent >= 50 ? 'ผ' : 'มผ') : '-';
-                          } else {
-                            grade = totalMax > 0 ? calculateGrade(yearlyPercent) : '-';
-                            if (grade !== '-') {
-                              totalGradePoint += Number(grade);
-                              gradedSubjectsCount++;
-                            }
-                          }
-
-                          let weight = '';
-                          if (sub.type === 'พื้นฐาน') weight = '80 / 2';
-                          if (sub.type === 'เพิ่มเติม') weight = '40 / 1';
-                          if (sub.type === 'กิจกรรม') weight = '40';
-
-                          return (
-                            <tr key={index} className="hover:bg-slate-50 transition-colors">
-                              <td className="px-4 py-3 text-center text-slate-500">{index + 1}</td>
-                              <td className="px-4 py-3 min-w-[200px]">
-                                <div className="font-bold text-slate-800">{sub.name}</div>
-                                <div className="text-[10px] text-slate-500 font-mono">{sub.code}</div>
-                              </td>
-                              <td className="px-4 py-3 text-center text-slate-600 whitespace-nowrap">{sub.type}</td>
-                              <td className="px-4 py-3 text-center text-slate-600 whitespace-nowrap">{weight}</td>
-                              <td className="px-4 py-3 text-center font-medium text-slate-700">{sem1Score !== null ? sem1Score : '-'}</td>
-                              <td className="px-4 py-3 text-center font-medium text-slate-700">{sem2Score !== null ? sem2Score : '-'}</td>
-                              <td className="px-4 py-3 text-center font-bold text-slate-800 bg-slate-50/50">{totalMax > 0 ? yearlyPercent : '-'}</td>
-                              <td className="px-4 py-3 text-center font-bold text-emerald-600 text-lg sm:text-xl">{grade}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot className="bg-slate-50 border-t-2 border-slate-200">
-                        <tr>
-                          <td colSpan={6} className="px-6 py-4 text-right font-bold text-slate-700 text-sm">เกรดเฉลี่ย (GPA)</td>
-                          <td colSpan={2} className="px-6 py-4 text-center font-bold text-emerald-600 text-2xl">
-                            {gradedSubjectsCount > 0 ? (totalGradePoint / gradedSubjectsCount).toFixed(2) : '-'}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
+              <div className="relative aspect-[1/1.414] w-full bg-slate-100 dark:bg-slate-900 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 overflow-hidden shadow-inner">
+                {isGeneratingPDF ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm z-10">
+                    <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    <p className="font-bold text-emerald-600 animate-pulse">กำลังประมวลผล PDF ตลอดยอดกิต...</p>
                   </div>
-                </div>
+                ) : pdfPreviewUrl ? (
+                  <iframe
+                    src={`${pdfPreviewUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                    className="w-full h-full border-none"
+                    title="PDF Preview"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                    <FileText size={64} className="mb-4 opacity-20" />
+                    <p>ไม่พบข้อมูลการพรีวิว</p>
+                  </div>
+                )}
               </div>
-            );
-          })() : (
-            <div className="flex flex-col items-center justify-center py-24 text-slate-300">
-              <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                <FileBarChart size={40} className="opacity-20" />
+            </div>
+          ) : (
+            <div className="py-20 text-center flex flex-col items-center bg-slate-50 dark:bg-slate-900/30 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800">
+              <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-full shadow-lg flex items-center justify-center mb-6">
+                <Users size={32} className="text-slate-300" />
               </div>
-              <p className="font-medium text-slate-500">กรุณาเลือกห้องและนักเรียนที่ต้องการดูรายงาน ปพ.1</p>
-              <p className="text-xs mt-1 text-slate-400">ข้อมูลจะถูกคำนวณจากรายวิชาทั้งเทอม 1 และเทอม 2</p>
+              <h3 className="text-xl font-bold text-slate-400">กรุณาเลือกนักเรียนเพื่อดู ปพ.1</h3>
+              <p className="text-sm text-slate-400 mt-2">พิมพ์ชื่อหรือเลขประจำตัวในช่องค้นหาด้านบน</p>
             </div>
           )}
         </div>
@@ -939,36 +1068,31 @@ export default function GradingSystem() {
               <p className="text-sm text-slate-500 dark:text-slate-400">จัดการข้อมูลนักเรียนทั้งหมด</p>
             </div>
             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-              <label className="flex-1 sm:flex-none cursor-pointer flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg transition-colors text-sm">
-                <Upload size={18} />
-                <span>นำเข้า CSV</span>
-                <input
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  className="hidden"
-                  onChange={(e) => {
-                    if (!isAdminMode) {
-                      setShowAdminLogin(true);
-                      e.target.value = ''; // Reset input
-                      return;
-                    }
-                    handleImportStudents(e);
-                  }}
-                />
-              </label>
-              <button
-                onClick={() => {
-                  if (!isAdminMode) {
-                    setShowAdminLogin(true);
-                    return;
-                  }
-                  setIsClearDataModalOpen(true);
-                }}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors text-sm"
-              >
-                <Trash2 size={18} />
-                <span>ล้างข้อมูล</span>
-              </button>
+              {isAdminMode && (
+                <>
+                  <label className="flex-1 sm:flex-none cursor-pointer flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg transition-colors text-sm">
+                    <Upload size={18} />
+                    <span>นำเข้า CSV</span>
+                    <input
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      className="hidden"
+                      onChange={(e) => {
+                        handleImportStudents(e);
+                      }}
+                    />
+                  </label>
+                  <button
+                    onClick={() => {
+                      setIsClearDataModalOpen(true);
+                    }}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors text-sm"
+                  >
+                    <Trash2 size={18} />
+                    <span>ล้างข้อมูล</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -1071,82 +1195,73 @@ export default function GradingSystem() {
           </div>
 
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 w-full lg:w-auto">
-            <button
-              onClick={() => {
-                if (!isAdminMode) {
-                  setShowAdminLogin(true);
-                  return;
-                }
-                setNewSubject(prev => ({ ...prev, semester: activeSemester }));
-                setIsAddSubjectOpen(true);
-              }}
-              className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg transition-colors shadow-sm text-xs sm:text-sm"
-            >
-              <Plus size={18} />
-              <span>เพิ่มรายวิชา</span>
-            </button>
-            <div className="relative">
-              <button
-                onClick={() => setIsSubjectMenuOpen(!isSubjectMenuOpen)}
-                className="w-full flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors shadow-sm text-xs sm:text-sm"
-              >
-                <Settings size={18} />
-                <span>จัดการรายวิชา</span>
-              </button>
-
-              {isSubjectMenuOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setIsSubjectMenuOpen(false)}
-                  />
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl shadow-lg z-50 py-1 overflow-hidden">
-                    <button
-                      onClick={() => {
-                        setIsSubjectMenuOpen(false);
-                        if (!isAdminMode) {
-                          setShowAdminLogin(true);
-                          return;
-                        }
-                        setIsStandardSubjectModalOpen(true);
-                      }}
-                      className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
-                    >
-                      <BookOpen size={16} className="text-slate-400 dark:text-slate-500" />
-                      กำหนดวิชามาตรฐาน
-                    </button>
-                    <label className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 cursor-pointer transition-colors">
-                      <Upload size={16} className="text-slate-400 dark:text-slate-500" />
-                      นำเข้าวิชา (CSV)
-                      <input
-                        type="file"
-                        accept=".csv"
-                        className="hidden"
-                        onChange={(e) => {
-                          setIsSubjectMenuOpen(false);
-                          if (!isAdminMode) {
-                            setShowAdminLogin(true);
-                            e.target.value = '';
-                            return;
-                          }
-                          handleImportSubjects(e);
-                        }}
+            {isAdminMode && (
+              <>
+                <button
+                  onClick={() => {
+                    setNewSubject(prev => ({ ...prev, semester: activeSemester }));
+                    setIsAddSubjectOpen(true);
+                  }}
+                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg transition-colors shadow-sm text-xs sm:text-sm"
+                >
+                  <Plus size={18} />
+                  <span>เพิ่มรายวิชา</span>
+                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setIsSubjectMenuOpen(!isSubjectMenuOpen)}
+                    className="w-full flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors shadow-sm text-xs sm:text-sm"
+                  >
+                    <Settings size={18} />
+                    <span>จัดการรายวิชา</span>
+                  </button>
+                  alimony
+                  {isSubjectMenuOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setIsSubjectMenuOpen(false)}
                       />
-                    </label>
-                    <button
-                      onClick={() => {
-                        setIsSubjectMenuOpen(false);
-                        downloadSubjectTemplate();
-                      }}
-                      className="w-full text-left px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900 flex items-center gap-3 transition-colors border-t border-slate-50 dark:border-slate-700"
-                    >
-                      <Download size={16} className="text-emerald-500 dark:text-emerald-400" />
-                      ดาวน์โหลดเทมเพลต
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+                      <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl shadow-lg z-50 py-1 overflow-hidden">
+                        <button
+                          onClick={() => {
+                            setIsSubjectMenuOpen(false);
+                            setIsStandardSubjectModalOpen(true);
+                          }}
+                          className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
+                        >
+                          <BookOpen size={16} className="text-slate-400 dark:text-slate-500" />
+                          กำหนดวิชามาตรฐาน
+                        </button>
+                        <label className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 cursor-pointer transition-colors">
+                          <Upload size={16} className="text-slate-400 dark:text-slate-500" />
+                          นำเข้าวิชา (CSV)
+                          <input
+                            type="file"
+                            accept=".csv"
+                            className="hidden"
+                            onChange={(e) => {
+                              setIsSubjectMenuOpen(false);
+                              handleImportSubjects(e);
+                            }}
+                          />
+                        </label>
+                        <button
+                          onClick={() => {
+                            setIsSubjectMenuOpen(false);
+                            downloadSubjectTemplate();
+                          }}
+                          className="w-full text-left px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900 flex items-center gap-3 transition-colors border-t border-slate-50 dark:border-slate-700"
+                        >
+                          <Download size={16} className="text-emerald-500 dark:text-emerald-400" />
+                          ดาวน์โหลดเทมเพลต
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -2349,50 +2464,4 @@ export default function GradingSystem() {
   );
 }
 
-// Helper Components for Sidebar
-const SidebarItem = ({ icon: Icon, label, active, onClick, hasSubmenu, isOpen }: any) => (
-  <button
-    onClick={onClick}
-    className={cn(
-      "w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 group relative",
-      active
-        ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 shadow-sm"
-        : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100"
-    )}
-    title={!label ? "เมนู" : undefined}
-  >
-    <div className="flex items-center gap-3">
-      <Icon size={20} className={cn("transition-colors", active ? "text-emerald-600" : "text-slate-400 group-hover:text-slate-600")} />
-      {label && <span className="font-medium text-sm whitespace-nowrap overflow-hidden">{label}</span>}
-    </div>
-    {hasSubmenu && label && (
-      <motion.div
-        animate={{ rotate: isOpen ? 90 : 0 }}
-        className="text-slate-400"
-      >
-        <ChevronRight size={16} />
-      </motion.div>
-    )}
-    {active && <motion.div layoutId="activeTab" className="absolute left-0 w-1 h-6 bg-emerald-600 rounded-r-full" />}
-  </button>
-);
 
-const SidebarSubItem = ({ label, active, onClick }: any) => (
-  <button
-    onClick={onClick}
-    className={cn(
-      "w-full text-left pl-12 pr-4 py-2 text-sm rounded-lg transition-colors relative",
-      active
-        ? "text-emerald-700 dark:text-emerald-400 font-medium bg-emerald-50/50 dark:bg-emerald-900/20"
-        : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800"
-    )}
-  >
-    {active && (
-      <motion.div
-        layoutId="activeSubItem"
-        className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-4 bg-emerald-500 rounded-r-full"
-      />
-    )}
-    <span className="truncate block">{label}</span>
-  </button>
-);
