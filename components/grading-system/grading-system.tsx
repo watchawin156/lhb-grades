@@ -156,7 +156,23 @@ export default function GradingSystem() {
     });
   };
 
-  // Load data from localStorage on mount - Updated for Real-time Sync
+  const forceSyncCloud = async (currentStudents: Student[], currentSubjects: Subject[], currentScores: ScoreRecord[]) => {
+    setIsSaving(true);
+    try {
+      await fetch('/api/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ students: currentStudents, subjects: currentSubjects, scores: currentScores }),
+      });
+      setLastSynced(new Date());
+    } catch (e) {
+      console.error("Force Cloud sync failed", e);
+    }
+    setIsSaving(false);
+    setLastSaved(new Date());
+  };
+
+  // Load data from localStorage on mount - Updated for Safe Merge
   useEffect(() => {
     const initData = async () => {
       const loadedYearSettings = localStorage.getItem('grading_year_settings');
@@ -167,36 +183,40 @@ export default function GradingSystem() {
         setAcademicYear(settings.defaultYear);
       }
 
-      // Try to load from Cloud first for real-time
+      // 1. Get from LocalStorage (Source of truth for latest UI changes)
+      const localStudents = JSON.parse(localStorage.getItem('grading_students') || '[]');
+      const localSubjects = JSON.parse(localStorage.getItem('grading_subjects') || '[]');
+      const localScores = JSON.parse(localStorage.getItem('grading_scores') || '[]');
+      const loadedTemplate = localStorage.getItem('grading_standard_template');
+      if (loadedTemplate) setStandardSubjectsTemplate(JSON.parse(loadedTemplate));
+
+      // 2. Try to fetch from Cloud
       try {
         const response = await fetch('/api/data');
         if (response.ok) {
-          const data = await response.json();
-          if (data.students?.length || data.subjects?.length || data.scores?.length) {
-            setStudents(data.students || []);
-            setSubjects(data.subjects || []);
-            setScores(data.scores || []);
-            setLastSynced(new Date());
-          } else {
-            // If cloud is empty, load from localStorage
-            const loadedStudents = localStorage.getItem('grading_students');
-            const loadedSubjects = localStorage.getItem('grading_subjects');
-            const loadedScores = localStorage.getItem('grading_scores');
-            if (loadedStudents) setStudents(JSON.parse(loadedStudents));
-            if (loadedSubjects) setSubjects(JSON.parse(loadedSubjects));
-            if (loadedScores) setScores(JSON.parse(loadedScores));
-          }
+          const cloudData = await response.json();
+
+          // 3. Safe Merge: Use Cloud if it has data, but fallback to Local if Cloud part is empty
+          // This prevents "Cloud (only subjects) wiping Local (students + subjects)"
+          const mergedStudents = (cloudData.students && cloudData.students.length > 0) ? cloudData.students : localStudents;
+          const mergedSubjects = (cloudData.subjects && cloudData.subjects.length > 0) ? cloudData.subjects : localSubjects;
+          const mergedScores = (cloudData.scores && cloudData.scores.length > 0) ? cloudData.scores : localScores;
+
+          setStudents(mergedStudents);
+          setSubjects(mergedSubjects);
+          setScores(mergedScores);
+          setLastSynced(new Date());
+        } else {
+          // Response not OK - Use local
+          setStudents(localStudents);
+          setSubjects(localSubjects);
+          setScores(localScores);
         }
       } catch (e) {
-        // Fallback to localStorage if offline
-        const loadedStudents = localStorage.getItem('grading_students');
-        const loadedSubjects = localStorage.getItem('grading_subjects');
-        const loadedScores = localStorage.getItem('grading_scores');
-        const loadedTemplate = localStorage.getItem('grading_standard_template');
-        if (loadedStudents) setStudents(JSON.parse(loadedStudents));
-        if (loadedSubjects) setSubjects(JSON.parse(loadedSubjects));
-        if (loadedScores) setScores(JSON.parse(loadedScores));
-        if (loadedTemplate) setStandardSubjectsTemplate(JSON.parse(loadedTemplate));
+        // Network Error - Use local
+        setStudents(localStudents);
+        setSubjects(localSubjects);
+        setScores(localScores);
       }
       setIsLoaded(true);
     };
@@ -340,7 +360,12 @@ export default function GradingSystem() {
       const existingIds = new Set(prev.filter(s => s.year === academicYear).map(s => s.id));
       const existingCodes = new Set(prev.filter(s => s.year === academicYear).map(s => s.code));
       const newOnes = imported.filter(s => !existingIds.has(s.id) && !existingCodes.has(s.code));
-      return [...prev, ...newOnes];
+      const updatedStudents = [...prev, ...newOnes];
+
+      // Force immediate cloud sync for important imports
+      forceSyncCloud(updatedStudents, subjects, scores);
+
+      return updatedStudents;
     });
     alert(`นำเข้าข้อมูลนักเรียนสำเร็จ ${imported.length} คน`);
   };
@@ -424,7 +449,12 @@ export default function GradingSystem() {
           setSubjects(prev => {
             const existingCodes = new Set(prev.map(s => s.code + s.semester));
             const uniqueNew = imported.filter(s => !existingCodes.has(s.code + s.semester));
-            return [...prev, ...uniqueNew];
+            const updatedSubjects = [...prev, ...uniqueNew];
+
+            // Force immediate cloud sync
+            forceSyncCloud(students, updatedSubjects, scores);
+
+            return updatedSubjects;
           });
           alert(`นำเข้าข้อมูลรายวิชาสำเร็จ ${imported.length} วิชา`);
         } else {
