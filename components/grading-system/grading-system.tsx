@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
 import {
   Users,
   BookOpen,
@@ -25,20 +27,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import * as pdfMake from 'pdfmake/build/pdfmake';
-import * as pdfFonts from 'pdfmake/build/vfs_fonts';
-import { TDocumentDefinitions } from 'pdfmake/interfaces';
 import { cn, calculateGrade, getGradeColor } from '@/lib/grading-utils';
-
-(pdfMake as any).vfs = (pdfFonts as any).pdfMake ? (pdfFonts as any).pdfMake.vfs : (pdfFonts as any).vfs;
-(pdfMake as any).fonts = {
-  THSarabunNew: {
-    normal: 'https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNew.ttf',
-    bold: 'https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNewBold.ttf',
-    italics: 'https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNew.ttf',
-    bolditalics: 'https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNewBold.ttf'
-  }
-};
 
 interface Student {
   id: string;
@@ -154,6 +143,7 @@ export default function GradingSystem() {
   const [reportSelectedStudent, setReportSelectedStudent] = useState<string>('all');
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [cachedFonts, setCachedFonts] = useState<{ regular: ArrayBuffer, bold: ArrayBuffer } | null>(null);
 
   // New Modals State
   const [isClearDataModalOpen, setIsClearDataModalOpen] = useState(false);
@@ -175,6 +165,23 @@ export default function GradingSystem() {
     { name: 'สุขศึกษาและพลศึกษา', type: 'พื้นฐาน', credit: 1 },
     { name: 'เพิ่มเติม (หน้าที่พลเมือง)', type: 'เพิ่มเติม', credit: 1 },
   ]);
+  // Pre-load fonts for fast PDF generation
+  useEffect(() => {
+    async function preLoadFonts() {
+      try {
+        const fontUrl = 'https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNew.ttf';
+        const fontBoldUrl = 'https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNewBold.ttf';
+        const [fRegular, fBold] = await Promise.all([
+          fetch(fontUrl).then(res => res.arrayBuffer()),
+          fetch(fontBoldUrl).then(res => res.arrayBuffer())
+        ]);
+        setCachedFonts({ regular: fRegular, bold: fBold });
+      } catch (e) {
+        console.error('Failed to pre-load fonts:', e);
+      }
+    }
+    preLoadFonts();
+  }, []);
 
   // Theme Handling
   useEffect(() => {
@@ -684,143 +691,85 @@ export default function GradingSystem() {
   const generateTranscriptPDF = async (student: Student) => {
     setIsGeneratingPDF(true);
     try {
+      // 1. Fetch fonts (Use cache if available)
+      let fontBytes = cachedFonts?.regular;
+      let fontBoldBytes = cachedFonts?.bold;
+
+      if (!fontBytes || !fontBoldBytes) {
+        const fontUrl = 'https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNew.ttf';
+        const fontBoldUrl = 'https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNewBold.ttf';
+        [fontBytes, fontBoldBytes] = await Promise.all([
+          fetch(fontUrl).then(res => res.arrayBuffer()),
+          fetch(fontBoldUrl).then(res => res.arrayBuffer())
+        ]);
+      }
+
+      // 2. Create PDF
+      const pdfDoc = await PDFDocument.create();
+      pdfDoc.registerFontkit(fontkit);
+      const customFont = await pdfDoc.embedFont(fontBytes);
+      const customFontBold = await pdfDoc.embedFont(fontBoldBytes);
+      const page = pdfDoc.addPage([595.28, 841.89]);
+      const { width, height } = page.getSize();
+      const margin = 50;
+
+      // 3. Header
+      page.drawText('รายงานผลการเรียนรายบุคคล (ปพ.1)', { x: width / 2 - 130, y: height - 60, size: 22, font: customFontBold, color: rgb(0, 0, 0) });
+      page.drawText(`ชื่อ-นามสกุล: ${student.name}`, { x: margin, y: height - 100, size: 16, font: customFont, color: rgb(0, 0, 0) });
+      page.drawText(`ชั้น: ${student.class.split('/')[0]}`, { x: margin, y: height - 120, size: 16, font: customFont, color: rgb(0, 0, 0) });
+      page.drawText(`เลขประจำตัว: ${student.code}`, { x: width - 200, y: height - 100, size: 16, font: customFont, color: rgb(0, 0, 0) });
+      page.drawText(`ปีการศึกษา: ${academicYear}`, { x: width - 200, y: height - 120, size: 16, font: customFont, color: rgb(0, 0, 0) });
+
+      // 4. Data Processing
       const subjectGroups: Record<string, any> = {};
       subjects.forEach(sub => {
         const key = sub.code || sub.name;
-        if (!subjectGroups[key]) {
-          subjectGroups[key] = {
-            code: sub.code,
-            name: sub.name,
-            type: sub.type || 'พื้นฐาน',
-            sem1: null,
-            sem2: null,
-            credit: sub.credit || 1
-          };
-        }
+        if (!subjectGroups[key]) subjectGroups[key] = { code: sub.code, name: sub.name, type: sub.type || 'พื้นฐาน', sem1: null, sem2: null, credit: sub.credit || 1 };
         if (sub.semester === 1) subjectGroups[key].sem1 = sub;
         if (sub.semester === 2) subjectGroups[key].sem2 = sub;
       });
-
       const sortedSubjs = Object.values(subjectGroups).sort((a: any, b: any) => {
         const typeOrder: Record<string, number> = { 'พื้นฐาน': 1, 'เพิ่มเติม': 2, 'กิจกรรม': 3 };
-        const typeA = a.type || 'พื้นฐาน';
-        const typeB = b.type || 'พื้นฐาน';
-        if (typeOrder[typeA] !== typeOrder[typeB]) {
-          return (typeOrder[typeA] || 99) - (typeOrder[typeB] || 99);
-        }
-        return (a.code || "").localeCompare(b.code || "");
+        return (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99) || (a.code || "").localeCompare(b.code || "");
       });
 
-      const tableBody = [
-        [
-          { text: 'ที่', style: 'tableHeader' },
-          { text: 'รหัส / รายวิชา', style: 'tableHeader', alignment: 'left' },
-          { text: 'ประเภท', style: 'tableHeader' },
-          { text: 'หน่วยกิต', style: 'tableHeader' },
-          { text: 'เทอม 1', style: 'tableHeader' },
-          { text: 'เทอม 2', style: 'tableHeader' },
-          { text: 'รวม', style: 'tableHeader' },
-          { text: 'เกรด', style: 'tableHeader' }
-        ]
-      ];
+      // 5. Table Rendering
+      const tableTop = height - 160;
+      const colWidths = [30, 180, 60, 50, 50, 50, 40, 40];
+      const colX = [margin];
+      colWidths.forEach((w, i) => colX.push(colX[i] + w));
 
+      const drawRow = (y: number, texts: string[], isBold = false) => {
+        const font = isBold ? customFontBold : customFont;
+        texts.forEach((text, i) => page.drawText(text, { x: colX[i] + 5, y: y + 5, size: 12, font, color: rgb(0, 0, 0) }));
+        page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
+      };
+
+      page.drawLine({ start: { x: margin, y: tableTop + 25 }, end: { x: width - margin, y: tableTop + 25 }, thickness: 1, color: rgb(0, 0, 0) });
+      drawRow(tableTop, ['ที่', 'รายวิชา', 'ประเภท', 'นก.', 'เทอม 1', 'เทอม 2', 'รวม', 'เกรด'], true);
+
+      let currentY = tableTop - 25;
       sortedSubjs.forEach((sub: any, idx) => {
         const s1 = sub.sem1 ? getScore(student.id, sub.sem1.id) : null;
         const s2 = sub.sem2 ? getScore(student.id, sub.sem2.id) : null;
-        const s1Max = sub.sem1?.maxScore || 0;
-        const s2Max = sub.sem2?.maxScore || 0;
         const totalGot = (s1 || 0) + (s2 || 0);
-        const totalMax = s1Max + s2Max;
+        const totalMax = (sub.sem1?.maxScore || 0) + (sub.sem2?.maxScore || 0);
         const percent = totalMax > 0 ? Math.round((totalGot / totalMax) * 100) : 0;
-
-        let grade = '-';
-        if (sub.type === 'กิจกรรม') {
-          grade = totalMax > 0 ? (percent >= 50 ? 'ผ' : 'มผ') : '-';
-        } else {
-          grade = totalMax > 0 ? calculateGrade(percent) : '-';
-        }
-
-        tableBody.push([
-          { text: (idx + 1).toString(), style: 'tableCell' },
-          {
-            stack: [
-              { text: sub.name, bold: true, color: '#000000' },
-              { text: sub.code, fontSize: 8, color: '#444444' }
-            ],
-            alignment: 'left',
-            style: 'tableCell'
-          },
-          { text: sub.type, style: 'tableCell' },
-          { text: sub.credit.toString(), style: 'tableCell' },
-          { text: s1 !== null ? s1.toString() : '-', style: 'tableCell' },
-          { text: s2 !== null ? s2.toString() : '-', style: 'tableCell' },
-          { text: totalMax > 0 ? percent.toString() : '-', style: 'tableCell' },
-          { text: grade, style: 'tableCell', bold: true }
-        ] as any);
+        const grade = sub.type === 'กิจกรรม' ? (totalMax > 0 ? (percent >= 50 ? 'ผ' : 'มผ') : '-') : (totalMax > 0 ? calculateGrade(percent) : '-');
+        drawRow(currentY, [(idx + 1).toString(), sub.name.substring(0, 30), sub.type, (sub.credit || 1).toString(), s1 !== null ? s1.toString() : '-', s2 !== null ? s2.toString() : '-', totalMax > 0 ? percent.toString() : '-', grade]);
+        currentY -= 25;
       });
 
-      const docDefinition: TDocumentDefinitions = {
-        pageSize: 'A4',
-        pageMargins: [40, 40, 40, 40],
-        content: [
-          { text: 'รายงานผลการเรียนรายบุคคล (ปพ.1)', style: 'header' },
-          {
-            columns: [
-              {
-                width: '*',
-                stack: [
-                  { text: `ชื่อ-นามสกุล: ${student.name}`, style: 'subheader' },
-                  { text: `ชั้น: ${student.class}/${student.room || '1'}`, style: 'subheader' }
-                ]
-              },
-              {
-                width: 'auto',
-                stack: [
-                  { text: `เลขประจำตัว: ${student.code}`, style: 'subheader' },
-                  { text: `ปีการศึกษา: ${academicYear}`, style: 'subheader' }
-                ],
-                alignment: 'right'
-              }
-            ],
-            margin: [0, 0, 0, 20]
-          },
-          {
-            table: {
-              headerRows: 1,
-              widths: [20, '*', 45, 40, 40, 40, 30, 35],
-              body: tableBody
-            },
-            layout: {
-              hLineWidth: () => 0.5,
-              vLineWidth: () => 0.5,
-              hLineColor: () => '#eee',
-              vLineColor: () => '#eee',
-              paddingLeft: () => 8,
-              paddingRight: () => 8,
-              paddingTop: () => 8,
-              paddingBottom: () => 8
-            }
-          } as any
-        ],
-        styles: {
-          header: { fontSize: 22, bold: true, alignment: 'center', margin: [0, 0, 0, 20], font: 'THSarabunNew', color: '#000000' },
-          subheader: { fontSize: 16, font: 'THSarabunNew', margin: [0, 2, 0, 2], color: '#000000' },
-          tableHeader: { fontSize: 12, bold: true, font: 'THSarabunNew', alignment: 'center', color: '#333333' },
-          tableCell: { fontSize: 14, font: 'THSarabunNew', alignment: 'center', color: '#000000' }
-        },
-        defaultStyle: { font: 'THSarabunNew', color: '#000000' }
-      };
-
-      const pdfDocGenerator = pdfMake.createPdf(docDefinition);
-      pdfDocGenerator.getDataUrl((dataUrl: string) => {
-        setPdfPreviewUrl(dataUrl);
-        setIsGeneratingPDF(false);
-      });
+      colX.forEach(x => page.drawLine({ start: { x, y: tableTop + 25 }, end: { x, y: currentY + 25 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) }));
+      const pdfBase64 = await pdfDoc.saveAsBase64({ dataUri: true });
+      setPdfPreviewUrl(pdfBase64);
+      setIsGeneratingPDF(false);
     } catch (e) {
-      console.error(e);
+      console.error('PDF Error:', e);
       setIsGeneratingPDF(false);
     }
   };
+
 
   const handleKeyDown = (e: React.KeyboardEvent, studentIndex: number, subjectIndex: number, totalStudents: number, totalSubjects: number) => {
     if (e.key === 'Enter') {
@@ -843,11 +792,11 @@ export default function GradingSystem() {
       return acc;
     }, [] as Student[]);
 
-    const uniqueRooms = Array.from(new Set(uniqueStudents.map(s => `${s.class}${s.room ? `/${s.room}` : ''}`))).sort();
+    const uniqueClasses = Array.from(new Set(uniqueStudents.map(s => s.class))).sort();
 
     const filteredStudentsByRoom = selectedTranscriptRoom === 'all'
       ? uniqueStudents
-      : uniqueStudents.filter(s => `${s.class}${s.room ? `/${s.room}` : ''}` === selectedTranscriptRoom);
+      : uniqueStudents.filter(s => s.class === selectedTranscriptRoom);
 
     const selectedStudent = uniqueStudents.find(s => s.id === selectedTranscriptStudentId);
 
@@ -873,8 +822,8 @@ export default function GradingSystem() {
                 className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
               >
                 <option value="all">-- ทุกห้อง --</option>
-                {uniqueRooms.map(room => (
-                  <option key={room} value={room}>{room}</option>
+                {uniqueClasses.map(room => (
+                  <option key={room} value={room}>{room.split('/')[0]}</option>
                 ))}
               </select>
             </div>
@@ -913,7 +862,7 @@ export default function GradingSystem() {
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-800 dark:text-slate-100">{selectedStudent.name}</h4>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">เลขประจำตัว: {selectedStudent.code} | ชั้น {selectedStudent.class}/{selectedStudent.room || '1'}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">เลขประจำตัว: {selectedStudent.code} | ชั้น {selectedStudent.class.split('/')[0]}</p>
                   </div>
                 </div>
                 <button
@@ -1043,7 +992,7 @@ export default function GradingSystem() {
               const percentage = progress.total > 0 ? Math.round((progress.graded / progress.total) * 100) : 0;
               return (
                 <div key={className} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-700">
-                  <span className="font-bold text-slate-700 dark:text-slate-200 text-sm">{className}</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-200 text-sm">{className.split('/')[0]}</span>
                   <div className={cn("text-xs font-bold px-1.5 py-0.5 rounded-md",
                     percentage === 100 ? "bg-emerald-100 text-emerald-700" :
                       percentage > 50 ? "bg-blue-100 text-blue-700" :
@@ -1119,7 +1068,7 @@ export default function GradingSystem() {
                     <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors group">
                       <td className="px-6 py-4 text-slate-700 dark:text-slate-200 font-mono">{student.code}</td>
                       <td className="px-6 py-4 text-slate-800 dark:text-slate-100 font-medium">{student.name}</td>
-                      <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{student.class} {student.room && `/${student.room}`}</td>
+                      <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{student.class.split('/')[0]}</td>
                       <td className="px-6 py-4 text-center">
                         <button
                           onClick={() => deleteStudent(student.id)}
@@ -1148,7 +1097,7 @@ export default function GradingSystem() {
                   <div>
                     <p className="text-xs font-mono text-slate-400 dark:text-slate-500 mb-0.5">{student.code}</p>
                     <p className="font-bold text-slate-800 dark:text-slate-100">{student.name}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{student.class} {student.room && `/${student.room}`}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{student.class.split('/')[0]}</p>
                   </div>
                   <button
                     onClick={() => deleteStudent(student.id)}
@@ -1370,238 +1319,13 @@ export default function GradingSystem() {
     );
   };
 
-  const generatePDF = async () => {
-    setIsGeneratingPDF(true);
-    try {
-      const studentsToPrint = reportSelectedStudent === 'all'
-        ? students.filter(s => s.class.includes(gradingGrade))
-        : students.filter(s => s.id === reportSelectedStudent);
-
-      const content: any[] = [];
-
-      for (let i = 0; i < studentsToPrint.length; i++) {
-        const student = studentsToPrint[i];
-
-        const subjectGroups: Record<string, any> = {};
-        subjects.forEach(sub => {
-          const key = sub.code || sub.name;
-          if (!subjectGroups[key]) {
-            subjectGroups[key] = {
-              code: sub.code,
-              name: sub.name,
-              type: sub.type || 'พื้นฐาน',
-              sem1: null,
-              sem2: null
-            };
-          }
-          if (sub.semester === 1) subjectGroups[key].sem1 = sub;
-          if (sub.semester === 2) subjectGroups[key].sem2 = sub;
-        });
-
-        const combinedSubjects = Object.values(subjectGroups).sort((a, b) => {
-          const typeOrder: Record<string, number> = { 'พื้นฐาน': 1, 'เพิ่มเติม': 2, 'กิจกรรม': 3 };
-          if (typeOrder[a.type] !== typeOrder[b.type]) {
-            return typeOrder[a.type] - typeOrder[b.type];
-          }
-          return a.code.localeCompare(b.code);
-        });
-
-        let totalGradePoint = 0;
-        let gradedSubjectsCount = 0;
-
-        const tableBody: any[] = [
-          [
-            { text: 'ลำดับ\nที่', style: 'tableHeader' },
-            { text: 'รายวิชา', style: 'tableHeader' },
-            { text: 'ประเภท', style: 'tableHeader' },
-            { text: 'น้ำหนัก\nหน่วยกิต', style: 'tableHeader' },
-            { text: 'ภาคเรียนที่ 1\n(100)', style: 'tableHeader' },
-            { text: 'ภาคเรียนที่ 2\n(100)', style: 'tableHeader' },
-            { text: 'รวม', style: 'tableHeader' },
-            { text: 'ระดับผล\nการเรียน', style: 'tableHeader' },
-            { text: 'หมายเหตุ', style: 'tableHeader' }
-          ]
-        ];
-
-        combinedSubjects.forEach((sub, index) => {
-          const sem1Score = sub.sem1 ? getScore(student.id, sub.sem1.id) : null;
-          const sem2Score = sub.sem2 ? getScore(student.id, sub.sem2.id) : null;
-
-          const sem1Max = sub.sem1?.maxScore || 0;
-          const sem2Max = sub.sem2?.maxScore || 0;
-
-          const totalGot = (sem1Score || 0) + (sem2Score || 0);
-          const totalMax = sem1Max + sem2Max;
-
-          const yearlyPercent = totalMax > 0 ? Math.round((totalGot / totalMax) * 100) : 0;
-
-          let grade = '-';
-          if (sub.type === 'กิจกรรม') {
-            grade = totalMax > 0 ? (yearlyPercent >= 50 ? 'ผ' : 'มผ') : '-';
-          } else {
-            grade = totalMax > 0 ? calculateGrade(yearlyPercent) : '-';
-            if (grade !== '-') {
-              totalGradePoint += Number(grade);
-              gradedSubjectsCount++;
-            }
-          }
-
-          let weight = '';
-          if (sub.type === 'พื้นฐาน') weight = '80 / 2';
-          if (sub.type === 'เพิ่มเติม') weight = '40 / 1';
-          if (sub.type === 'กิจกรรม') weight = '40';
-
-          tableBody.push([
-            { text: (index + 1).toString(), style: 'tableCell' },
-            { text: sub.name, style: 'tableCellLeft' },
-            { text: sub.type, style: 'tableCell' },
-            { text: weight, style: 'tableCell' },
-            { text: sem1Score !== null ? sem1Score.toString() : '-', style: 'tableCell' },
-            { text: sem2Score !== null ? sem2Score.toString() : '-', style: 'tableCell' },
-            { text: totalMax > 0 ? yearlyPercent.toString() : '-', style: 'tableCell' },
-            { text: grade, style: 'tableCellBold' },
-            { text: '', style: 'tableCell' }
-          ]);
-        });
-
-        const gpa = gradedSubjectsCount > 0 ? (totalGradePoint / gradedSubjectsCount).toFixed(2) : '-';
-
-        content.push(
-          {
-            text: 'แบบรายงานผลพัฒนาคุณภาพผู้เรียนรายบุคคล ( ปพ.6 )',
-            style: 'header',
-            alignment: 'center',
-            margin: [0, 0, 0, 5]
-          },
-          {
-            columns: [
-              { text: `เลขประจำตัว: ${student.code}`, style: 'studentInfo', width: 'auto' },
-              { text: `ชื่อ-นามสกุล: ${student.name}`, style: 'studentInfo', width: '*', alignment: 'center' },
-              { text: `ชั้น: ${student.class}`, style: 'studentInfo', width: 'auto', alignment: 'right' }
-            ],
-            margin: [0, 0, 0, 5]
-          },
-          {
-            table: {
-              headerRows: 1,
-              widths: [25, '*', 50, 65, 60, 60, 40, 45, 50],
-              body: tableBody
-            },
-            layout: {
-              fillColor: function (rowIndex: number) {
-                return (rowIndex === 0) ? '#ffedd5' : null;
-              }
-            },
-            margin: [0, 0, 0, 10]
-          },
-          {
-            columns: [
-              {
-                width: '55%',
-                stack: [
-                  {
-                    table: {
-                      widths: ['*', 'auto'],
-                      body: [
-                        [{ text: 'สรุปผลการประเมิน', colSpan: 2, style: 'tableHeader', fillColor: '#ffedd5' }, {}],
-                        [{ text: 'จำนวนหน่วยกิต/น้ำหนักรายวิชาพื้นฐาน', style: 'tableCellLeft' }, { text: '21 / 840', style: 'tableCell' }],
-                        [{ text: 'จำนวนหน่วยกิต/น้ำหนักรายวิชาเพิ่มเติม', style: 'tableCellLeft' }, { text: '2 / 80', style: 'tableCell' }],
-                        [{ text: 'รวมหน่วยกิต/น้ำหนัก', style: 'tableCellLeft' }, { text: '23 / 920', style: 'tableCell' }],
-                        [{ text: 'ระดับผลการเรียนเฉลี่ย', style: 'tableCellLeft' }, { text: gpa, style: 'tableCellBold' }]
-                      ]
-                    },
-                    margin: [0, 0, 10, 5]
-                  },
-                  {
-                    table: {
-                      widths: ['*'],
-                      body: [
-                        [{ text: 'การประเมินคุณลักษณะ', style: 'tableHeader', fillColor: '#ffedd5' }],
-                        [{ text: 'คุณลักษณะอันพึงประสงค์ของสถานศึกษา', style: 'tableCellLeft' }],
-                        [{ text: 'การอ่าน คิดวิเคราะห์และเขียน', style: 'tableCellLeft' }],
-                        [{ text: 'กิจกรรมพัฒนาผู้เรียน', style: 'tableCellLeft' }]
-                      ]
-                    },
-                    margin: [0, 0, 10, 0]
-                  }
-                ]
-              },
-              {
-                width: '45%',
-                stack: [
-                  { text: 'ลงชื่อ.........................................................', alignment: 'center', margin: [0, 10, 0, 0] },
-                  { text: 'ครูที่ปรึกษา/ครูประจำชั้น', alignment: 'center', margin: [0, 0, 0, 10] },
-                  { text: 'ลงชื่อ.........................................................', alignment: 'center', margin: [0, 0, 0, 0] },
-                  { text: 'ผู้อำนวยการ', alignment: 'center', margin: [0, 0, 0, 10] },
-                  { text: 'ลงชื่อ.........................................................', alignment: 'center', margin: [0, 0, 0, 0] },
-                  { text: 'ผู้ปกครอง', alignment: 'center', margin: [0, 0, 0, 0] }
-                ]
-              }
-            ]
-          }
-        );
-
-        if (i < studentsToPrint.length - 1) {
-          content.push({ text: '', pageBreak: 'after', style: 'tableCell' });
-        }
-      }
-
-      const docDefinition: TDocumentDefinitions = {
-        content: content,
-        defaultStyle: {
-          font: 'THSarabunNew',
-          fontSize: 16
-        },
-        styles: {
-          header: {
-            fontSize: 20,
-            bold: true
-          },
-          subheader: {
-            fontSize: 16,
-            bold: true
-          },
-          studentInfo: {
-            fontSize: 16,
-            bold: true
-          },
-          tableHeader: {
-            fontSize: 16,
-            bold: true,
-            alignment: 'center',
-            margin: [0, 0, 0, 0]
-          },
-          tableCell: {
-            fontSize: 16,
-            alignment: 'center',
-            margin: [0, -1, 0, -1]
-          },
-          tableCellLeft: {
-            fontSize: 16,
-            alignment: 'left',
-            margin: [2, -1, 0, -1]
-          },
-          tableCellBold: {
-            fontSize: 16,
-            alignment: 'center',
-            bold: true,
-            margin: [0, -1, 0, -1]
-          }
-        },
-        pageSize: 'A4',
-        pageMargins: [15, 15, 15, 15]
-      };
-
-      pdfMake.createPdf(docDefinition).open();
-
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('เกิดข้อผิดพลาดในการสร้าง PDF');
-    } finally {
-      setIsGeneratingPDF(false);
-      setIsReportModalOpen(false);
-    }
+  const generatePDF = () => {
+    alert('ระบบ ปพ.6 กำลังอยู่ระหว่างการปรับปรุงครับ');
   };
+
+
+
+
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans overflow-hidden transition-colors duration-300">
@@ -1978,156 +1702,160 @@ export default function GradingSystem() {
       </main>
 
       {/* Add Subject Modal */}
-      {isAddSubjectOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-white dark:bg-slate-800 rounded-2xl p-8 w-full max-w-md shadow-2xl"
-          >
-            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-6">เพิ่มรายวิชาใหม่</h3>
-            <div className="space-y-4">
-              <div className="flex gap-4 p-1 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600">
-                {[1, 2].map(sem => (
-                  <button
-                    key={sem}
-                    onClick={() => setNewSubject(prev => ({ ...prev, semester: sem }))}
-                    className={cn(
-                      "flex-1 py-2 rounded-md text-sm font-bold transition-all",
-                      newSubject.semester === sem
-                        ? "bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm"
-                        : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
-                    )}
-                  >
-                    เทอม {sem}
-                  </button>
-                ))}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">รหัสวิชา</label>
-                <input
-                  type="text"
-                  value={newSubject.code}
-                  onChange={e => setNewSubject(prev => ({ ...prev, code: e.target.value }))}
-                  className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-                  placeholder="เช่น ท11101"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">ชื่อวิชา</label>
-                <input
-                  type="text"
-                  value={newSubject.name}
-                  onChange={e => setNewSubject(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-                  placeholder="เช่น ภาษาไทย"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">ประเภทวิชา</label>
-                  <select
-                    value={newSubject.type || 'พื้นฐาน'}
-                    onChange={e => setNewSubject(prev => ({ ...prev, type: e.target.value as any }))}
-                    className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-                  >
-                    <option value="พื้นฐาน">พื้นฐาน</option>
-                    <option value="เพิ่มเติม">เพิ่มเติม</option>
-                    <option value="กิจกรรม">กิจกรรม</option>
-                  </select>
+      {
+        isAddSubjectOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white dark:bg-slate-800 rounded-2xl p-8 w-full max-w-md shadow-2xl"
+            >
+              <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-6">เพิ่มรายวิชาใหม่</h3>
+              <div className="space-y-4">
+                <div className="flex gap-4 p-1 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600">
+                  {[1, 2].map(sem => (
+                    <button
+                      key={sem}
+                      onClick={() => setNewSubject(prev => ({ ...prev, semester: sem }))}
+                      className={cn(
+                        "flex-1 py-2 rounded-md text-sm font-bold transition-all",
+                        newSubject.semester === sem
+                          ? "bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm"
+                          : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                      )}
+                    >
+                      เทอม {sem}
+                    </button>
+                  ))}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">หน่วยกิต/น้ำหนัก</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">รหัสวิชา</label>
                   <input
-                    type="number"
-                    step="0.5"
-                    value={newSubject.credit || ''}
-                    onChange={e => setNewSubject(prev => ({ ...prev, credit: Number(e.target.value) }))}
+                    type="text"
+                    value={newSubject.code}
+                    onChange={e => setNewSubject(prev => ({ ...prev, code: e.target.value }))}
                     className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-                    placeholder="เช่น 1.5"
+                    placeholder="เช่น ท11101"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">ชื่อวิชา</label>
+                  <input
+                    type="text"
+                    value={newSubject.name}
+                    onChange={e => setNewSubject(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                    placeholder="เช่น ภาษาไทย"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">ประเภทวิชา</label>
+                    <select
+                      value={newSubject.type || 'พื้นฐาน'}
+                      onChange={e => setNewSubject(prev => ({ ...prev, type: e.target.value as any }))}
+                      className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                    >
+                      <option value="พื้นฐาน">พื้นฐาน</option>
+                      <option value="เพิ่มเติม">เพิ่มเติม</option>
+                      <option value="กิจกรรม">กิจกรรม</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">หน่วยกิต/น้ำหนัก</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={newSubject.credit || ''}
+                      onChange={e => setNewSubject(prev => ({ ...prev, credit: Number(e.target.value) }))}
+                      className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                      placeholder="เช่น 1.5"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">คะแนนเต็ม</label>
+                  <input
+                    type="number"
+                    value={newSubject.maxScore}
+                    onChange={e => setNewSubject(prev => ({ ...prev, maxScore: Number(e.target.value) }))}
+                    className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => setIsAddSubjectOpen(false)}
+                    className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 font-medium"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    onClick={handleAddSubject}
+                    className="flex-1 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium"
+                  >
+                    บันทึก
+                  </button>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">คะแนนเต็ม</label>
-                <input
-                  type="number"
-                  value={newSubject.maxScore}
-                  onChange={e => setNewSubject(prev => ({ ...prev, maxScore: Number(e.target.value) }))}
-                  className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-                />
-              </div>
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => setIsAddSubjectOpen(false)}
-                  className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 font-medium"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  onClick={handleAddSubject}
-                  className="flex-1 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium"
-                >
-                  บันทึก
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
+            </motion.div>
+          </div>
+        )
+      }
       {/* Report Modal */}
-      {isReportModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-white dark:bg-slate-800 rounded-2xl p-8 w-full max-w-md shadow-2xl"
-          >
-            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-6">ออกรายงานผลการเรียน (ปพ.6)</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">เลือกนักเรียน ป.{gradingGrade}</label>
-                <select
-                  className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-                  value={reportSelectedStudent}
-                  onChange={(e) => setReportSelectedStudent(e.target.value)}
-                >
-                  <option value="all">เลือกทั้งหมด (ทุกคนในห้อง)</option>
-                  {students.filter(s => s.class.includes(gradingGrade)).map(s => (
-                    <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
-                  ))}
-                </select>
+      {
+        isReportModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white dark:bg-slate-800 rounded-2xl p-8 w-full max-w-md shadow-2xl"
+            >
+              <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-6">ออกรายงานผลการเรียน (ปพ.6)</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">เลือกนักเรียน ป.{gradingGrade}</label>
+                  <select
+                    className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                    value={reportSelectedStudent}
+                    onChange={(e) => setReportSelectedStudent(e.target.value)}
+                  >
+                    <option value="all">เลือกทั้งหมด (ทุกคนในห้อง)</option>
+                    {students.filter(s => s.class.includes(gradingGrade)).map(s => (
+                      <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => setIsReportModalOpen(false)}
+                    disabled={isGeneratingPDF}
+                    className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 font-medium disabled:opacity-50"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    onClick={generatePDF}
+                    disabled={isGeneratingPDF}
+                    className="flex-1 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isGeneratingPDF ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        กำลังสร้าง PDF...
+                      </>
+                    ) : (
+                      <>
+                        <FileText size={18} />
+                        สร้าง PDF
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => setIsReportModalOpen(false)}
-                  disabled={isGeneratingPDF}
-                  className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 font-medium disabled:opacity-50"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  onClick={generatePDF}
-                  disabled={isGeneratingPDF}
-                  className="flex-1 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isGeneratingPDF ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      กำลังสร้าง PDF...
-                    </>
-                  ) : (
-                    <>
-                      <FileText size={18} />
-                      สร้าง PDF
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
+            </motion.div>
+          </div>
+        )
+      }
 
       {/* Clear Data Modal */}
       <AnimatePresence>
@@ -2460,7 +2188,7 @@ export default function GradingSystem() {
         )}
       </AnimatePresence>
 
-    </div>
+    </div >
   );
 }
 
