@@ -1579,8 +1579,286 @@ export default function GradingSystem() {
     );
   };
 
-  const generatePDF = () => {
-    alert('ระบบ ปพ.6 กำลังอยู่ระหว่างการปรับปรุงครับ');
+  const generatePDF = async (studentToPrint?: Student) => {
+    setIsGeneratingPDF(true);
+    try {
+      // --- Fonts ---
+      let fontBytes = cachedFonts?.regular;
+      let fontBoldBytes = cachedFonts?.bold;
+      if (!fontBytes || !fontBoldBytes) {
+        [fontBytes, fontBoldBytes] = await Promise.all([
+          fetch('https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNew.ttf').then(r => r.arrayBuffer()),
+          fetch('https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNewBold.ttf').then(r => r.arrayBuffer()),
+        ]);
+      }
+
+      // --- Determine students to print ---
+      const studentsInYear = students.filter(s => s.year === academicYear || !s.year);
+      const targets: Student[] = studentToPrint
+        ? [studentToPrint]
+        : (reportSelectedStudent === 'all' ? studentsInYear : studentsInYear.filter(s => s.id === reportSelectedStudent));
+
+      if (targets.length === 0) { alert('ไม่พบข้อมูลนักเรียน'); setIsGeneratingPDF(false); return; }
+
+      // --- Create PDF Doc ---
+      const pdfDoc = await PDFDocument.create();
+      pdfDoc.registerFontkit(fontkit);
+      const fReg = await pdfDoc.embedFont(fontBytes!);
+      const fBold = await pdfDoc.embedFont(fontBoldBytes!);
+
+      const W = 595.28, H = 841.89;
+      const black = rgb(0, 0, 0);
+      const orange = rgb(1, 0.647, 0.157);  // สีส้ม header
+      const white = rgb(1, 1, 1);
+      const stripe = rgb(0.93, 0.93, 0.93);
+
+      // Helper: draw text (clamp to width)
+      const txt = (pg: any, text: string, x: number, y: number, sz: number, bold = false, clr = black, maxW = 0) => {
+        let str = String(text ?? '');
+        if (maxW > 0) {
+          while (str.length > 1) {
+            const w = (bold ? fBold : fReg).widthOfTextAtSize(str, sz);
+            if (w <= maxW) break;
+            str = str.slice(0, -1);
+          }
+        }
+        pg.drawText(str, { x, y, size: sz, font: bold ? fBold : fReg, color: clr });
+      };
+      const hline = (pg: any, x1: number, y1: number, x2: number, y2: number, thick = 0.5, clr = black) =>
+        pg.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: thick, color: clr });
+      const fillRect = (pg: any, x: number, y: number, w: number, h: number, clr: any) =>
+        pg.drawRectangle({ x, y, width: w, height: h, color: clr, borderWidth: 0 });
+      const borderRect = (pg: any, x: number, y: number, w: number, h: number, thick = 0.5) =>
+        pg.drawRectangle({ x, y, width: w, height: h, borderWidth: thick, borderColor: black, color: white });
+
+      // ------ Column widths ------
+      const mL = 25, mR = W - 25;
+      const tableW = mR - mL;
+      // [idx, รหัสวิชา, รายวิชา, ประเภท, น้ำหนัก, ภ1เต็ม, ภ1ได้, ภ2เต็ม, ภ2ได้, รวมเต็ม, รวมได้, ระดับผล, หมายเหตุ]
+      const cols = [20, 52, 115, 42, 35, 28, 28, 28, 28, 28, 28, 38, 37];
+      const colX: number[] = [mL];
+      cols.forEach((c, i) => colX.push(colX[i] + c));
+
+      const drawCell = (pg: any, colIdx: number, y: number, rowH: number, text: string, sz = 9, bold = false, align: 'left' | 'center' = 'left', bg?: any) => {
+        const x = colX[colIdx];
+        const w = cols[colIdx];
+        if (bg) fillRect(pg, x, y - rowH, w, rowH, bg);
+        hline(pg, x, y, colX[colIdx + 1], y, 0.4);
+        hline(pg, x, y - rowH, colX[colIdx + 1], y - rowH, 0.4);
+        hline(pg, x, y, x, y - rowH, 0.4);
+        if (colIdx === cols.length - 1) hline(pg, colX[colIdx + 1], y, colX[colIdx + 1], y - rowH, 0.4);
+        const tw = bold ? fBold.widthOfTextAtSize(text, sz) : fReg.widthOfTextAtSize(String(text ?? ''), sz);
+        const tx = align === 'center' ? x + (w - tw) / 2 : x + 2;
+        txt(pg, text, tx, y - rowH + 3, sz, bold, black, w - 4);
+      };
+
+      const ROW_H = 14.5;
+      const HDR2_H = 16;
+      const HDR3_H = 28;
+
+      // Sort subjects
+      const sortedSubjs = [...subjects].sort((a, b) => {
+        const typeOrder: Record<string, number> = { 'พื้นฐาน': 1, 'เพิ่มเติม': 2, 'กิจกรรม': 3 };
+        return (typeOrder[a.type || 'พื้นฐาน'] || 99) - (typeOrder[b.type || 'พื้นฐาน'] || 99) || (a.code || '').localeCompare(b.code || '');
+      });
+
+      // Process each student
+      for (let si = 0; si < targets.length; si++) {
+        const student = targets[si];
+        const pg = pdfDoc.addPage([W, H]);
+        let curY = H - 18;
+
+        // ── Title Row 1: ปพ.6 label top right ──
+        txt(pg, 'ป.6', mR - 25, curY - 5, 12, true, black);
+
+        // ── Title Row 2: Title centered ──
+        const title = 'แบบรายงานผลพัฒนาคุณภาพผู้เรียนรายบุคคล ( ปพ.6 )';
+        const titleW = fBold.widthOfTextAtSize(title, 14);
+        txt(pg, title, (W - titleW) / 2, curY - 5, 14, true, black);
+        curY -= 20;
+
+        // ── Student info row ──
+        txt(pg, `ชื่อ-สกุล  ${student.name}`, mL, curY, 11, false);
+        txt(pg, `รหัสประจำตัว  ${student.code}`, mL + 200, curY, 11, false);
+        txt(pg, `ชั้น  ${student.class.split('/')[0]}`, mL + 370, curY, 11, false);
+        txt(pg, `ปีการศึกษา  ${academicYear}`, mL + 430, curY, 11, false);
+        curY -= 16;
+
+        // ── Header Row 3: Main column headers (orange bg) ──
+        const hdrY = curY;
+        // Draw full orange background for entire header area (3 rows worth)
+        fillRect(pg, mL, hdrY - HDR3_H - HDR2_H, tableW, HDR3_H + HDR2_H, orange);
+
+        // Header text row 1 (top merged)
+        const hdrLabels = [
+          { col: 0, text: 'ลำดับ\nที่', rows: 2 },
+          { col: 1, text: 'รหัสวิชา', rows: 2 },
+          { col: 2, text: 'รายวิชา', rows: 2 },
+          { col: 3, text: 'ประเภท', rows: 2 },
+          { col: 4, text: 'น้ำหนัก\nหน่วยกิต', rows: 2 },
+          { col: 5, text: 'ภาคเรียนที่ 1', span: 2, rows: 1 },
+          { col: 7, text: 'ภาคเรียนที่ 2', span: 2, rows: 1 },
+          { col: 9, text: 'ร้อยละคะแนนทั้งปี', span: 2, rows: 1 },
+          { col: 11, text: 'ระดับผล\nการเรียน', rows: 2 },
+          { col: 12, text: 'หมายเหตุ', rows: 2 },
+        ];
+
+        // Draw sub-column headers for sem1, sem2, total
+        const subHdr = [
+          { col: 5, text: 'เต็ม' }, { col: 6, text: 'ได้' },
+          { col: 7, text: 'เต็ม' }, { col: 8, text: 'ได้' },
+          { col: 9, text: 'เต็ม' }, { col: 10, text: 'ได้' },
+        ];
+
+        // Row 3a top headers
+        const r3aY = hdrY;
+        hdrLabels.forEach(h => {
+          const spanW = h.span ? cols.slice(h.col, h.col + h.span).reduce((a, b) => a + b, 0) : cols[h.col];
+          const cx = colX[h.col] + spanW / 2;
+          if (h.rows === 2) {
+            // vertically center over 2 rows
+            const lines2 = h.text.split('\n');
+            lines2.forEach((ln, li) => {
+              const lw = fBold.widthOfTextAtSize(ln, 8.5);
+              txt(pg, ln, cx - lw / 2, r3aY - 6 - li * 10, 8.5, true, black);
+            });
+          } else {
+            // single row at top
+            const lw = fBold.widthOfTextAtSize(h.text, 8.5);
+            txt(pg, h.text, cx - lw / 2, r3aY - 6, 8.5, true, black);
+          }
+        });
+
+        // Row 3b sub-headers (เต็ม/ได้)
+        const r3bY = hdrY - HDR3_H;
+        subHdr.forEach(h => {
+          const lw = fBold.widthOfTextAtSize(h.text, 8.5);
+          const cx = colX[h.col] + cols[h.col] / 2;
+          txt(pg, h.text, cx - lw / 2, r3bY - 5, 8.5, true, black);
+        });
+
+        // Draw grid lines for header
+        const hdrBottom = hdrY - HDR3_H - HDR2_H;
+        hline(pg, mL, hdrY, mR, hdrY, 0.7);
+        hline(pg, mL, hdrY - HDR3_H, mR, hdrY - HDR3_H, 0.5);
+        hline(pg, mL, hdrBottom, mR, hdrBottom, 0.7);
+        colX.forEach(x => hline(pg, x, hdrY, x, hdrBottom, 0.4));
+
+        curY = hdrBottom;
+
+        // ── Data Rows ──
+        let rowNum = 0;
+        sortedSubjs.forEach((sub) => {
+          if (curY < 40) return; // page overflow guard
+
+          const s1 = getScore(student.id, sub.id);
+          const s1Max = sub.semester === 1 ? sub.maxScore : 0;
+          const s2Max = sub.semester === 2 ? sub.maxScore : 0;
+          // Find matching subject for other semester
+          const matchedSub = subjects.find(s => (s.code || s.name) === (sub.code || sub.name) && s.semester !== sub.semester);
+          const s2 = matchedSub ? getScore(student.id, matchedSub.id) : 0;
+          const sem1Score = sub.semester === 1 ? s1 : (matchedSub ? s2 : 0);
+          const sem2Score = sub.semester === 2 ? s1 : (matchedSub ? s2 : 0);
+          const sem1Max = sub.semester === 1 ? sub.maxScore : (matchedSub?.semester === 1 ? matchedSub.maxScore : 0);
+          const sem2Max = sub.semester === 2 ? sub.maxScore : (matchedSub?.semester === 2 ? matchedSub.maxScore : 0);
+          const totalGot = sem1Score + sem2Score;
+          const totalMax = sem1Max + sem2Max;
+          const yearPct = totalMax > 0 ? Math.round((totalGot / totalMax) * 100) : 0;
+
+          let grade = '-';
+          if (sub.type === 'กิจกรรม') {
+            grade = sub.maxScore > 0 ? (s1 >= sub.maxScore * 0.5 ? 'ผ' : 'มผ') : '-';
+          } else if (totalMax > 0) {
+            grade = calculateGrade(yearPct);
+          }
+
+          rowNum++;
+          const isAct = sub.type === 'กิจกรรม';
+          const rowBg = isAct ? stripe : white;
+
+          // Draw row
+          const rowY = curY;
+          // Skip duplicate subjects (already processed in pair)
+          drawCell(pg, 0, rowY, ROW_H, rowNum.toString(), 9, false, 'center', rowBg);
+          drawCell(pg, 1, rowY, ROW_H, sub.code || '', 8.5, false, 'left', rowBg);
+          drawCell(pg, 2, rowY, ROW_H, sub.name, 9, false, 'left', rowBg);
+          drawCell(pg, 3, rowY, ROW_H, sub.type || 'พื้นฐาน', 8.5, false, 'center', rowBg);
+          // น้ำหนัก/หน่วยกิต format: "maxScore/credit"
+          const wt = sub.type === 'กิจกรรม' ? (sub.maxScore || '-').toString() : `${sub.maxScore}/${sub.credit || 1}`;
+          drawCell(pg, 4, rowY, ROW_H, wt, 9, false, 'center', rowBg);
+
+          if (isAct) {
+            // กิจกรรม: no scores
+            for (let c = 5; c <= 10; c++) drawCell(pg, c, rowY, ROW_H, '', 9, false, 'center', stripe);
+            drawCell(pg, 11, rowY, ROW_H, grade, 9, false, 'center', rowBg);
+          } else {
+            drawCell(pg, 5, rowY, ROW_H, sem1Max > 0 ? sem1Max.toString() : '-', 9, false, 'center');
+            drawCell(pg, 6, rowY, ROW_H, sem1Score > 0 ? sem1Score.toString() : '-', 9, false, 'center');
+            drawCell(pg, 7, rowY, ROW_H, sem2Max > 0 ? sem2Max.toString() : '-', 9, false, 'center');
+            drawCell(pg, 8, rowY, ROW_H, sem2Score > 0 ? sem2Score.toString() : '-', 9, false, 'center');
+            drawCell(pg, 9, rowY, ROW_H, totalMax > 0 ? totalMax.toString() : '-', 9, false, 'center');
+            drawCell(pg, 10, rowY, ROW_H, totalMax > 0 ? totalGot.toString() : '-', 9, false, 'center');
+            drawCell(pg, 11, rowY, ROW_H, grade, 9, false, 'center');
+          }
+          drawCell(pg, 12, rowY, ROW_H, '', 9, false, 'left', rowBg);
+
+          curY -= ROW_H;
+        });
+
+        // Empty rows (buffer)
+        for (let i = 0; i < 4; i++) {
+          if (curY < 40) break;
+          drawCell(pg, 0, curY, ROW_H, '', 9, false, 'center');
+          for (let c = 1; c <= 12; c++) drawCell(pg, c, curY, ROW_H, '', 9, false, 'center');
+          curY -= ROW_H;
+        }
+
+        // ── GPA Row ──
+        curY -= 8;
+        let totalGPts = 0, gCount = 0;
+        const subjectGroups2: Record<string, any> = {};
+        subjects.forEach(sub => {
+          const key = sub.code || sub.name;
+          if (!subjectGroups2[key]) subjectGroups2[key] = { sem1: null, sem2: null, type: sub.type };
+          if (sub.semester === 1) subjectGroups2[key].sem1 = sub;
+          else subjectGroups2[key].sem2 = sub;
+        });
+        Object.values(subjectGroups2).forEach((sg: any) => {
+          if (sg.type === 'กิจกรรม') return;
+          const s1 = sg.sem1 ? getScore(student.id, sg.sem1.id) : 0;
+          const s2 = sg.sem2 ? getScore(student.id, sg.sem2.id) : 0;
+          const m1 = sg.sem1?.maxScore || 0; const m2 = sg.sem2?.maxScore || 0;
+          const tot = s1 + s2; const max = m1 + m2;
+          if (max > 0) { const g = parseFloat(calculateGrade(Math.round((tot / max) * 100))); if (!isNaN(g)) { totalGPts += g; gCount++; } }
+        });
+        const gpa = gCount > 0 ? (totalGPts / gCount).toFixed(2) : '-';
+        txt(pg, `ผลการเรียนเฉลี่ย (GPA) : ${gpa}`, mL, curY, 10, true, black);
+        curY -= 20;
+
+        // ── Signature ──
+        txt(pg, 'ลงชื่อ ......................................................', mL + 50, curY, 10, false);
+        txt(pg, 'ลงชื่อ ......................................................', mL + 300, curY, 10, false);
+        curY -= 14;
+        txt(pg, '(ครูที่ปรึกษา)', mL + 95, curY, 10, false);
+        txt(pg, '(ผู้อำนวยการโรงเรียน)', mL + 340, curY, 10, false);
+      }
+
+      // ── Download PDF ──
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ปพ6_${targets.length === 1 ? targets[0].name : 'ทุกคน'}_${academicYear}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      setIsReportModalOpen(false);
+    } catch (e) {
+      console.error('PDF Error:', e);
+      alert('เกิดข้อผิดพลาดในการสร้าง PDF ครับ');
+    } finally {
+      setIsGeneratingPDF(false);
+    }
   };
 
 
