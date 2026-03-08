@@ -627,7 +627,7 @@ export default function GradingSystem() {
 
     return (
       <div className="space-y-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
               <FileBarChart className="text-emerald-600" />
@@ -712,7 +712,7 @@ export default function GradingSystem() {
                   </div>
                 </div>
 
-                <div className="overflow-hidden bg-white rounded-2xl border border-slate-100 shadow-sm">
+                <div className="overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse">
                       <thead>
@@ -847,44 +847,44 @@ export default function GradingSystem() {
       <div className="space-y-6">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
             <div className="flex items-center gap-4 mb-4">
-              <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Users size={24} /></div>
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl"><Users size={24} /></div>
               <div>
-                <p className="text-sm text-slate-500">นักเรียนทั้งหมด ({academicYear})</p>
-                <h3 className="text-2xl font-bold text-slate-800">{studentsInYear.length} คน</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">นักเรียนทั้งหมด ({academicYear})</p>
+                <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{studentsInYear.length} คน</h3>
               </div>
             </div>
           </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
             <div className="flex items-center gap-4 mb-4">
-              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><BookOpen size={24} /></div>
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl"><BookOpen size={24} /></div>
               <div>
-                <p className="text-sm text-slate-500">รายวิชาทั้งหมด</p>
-                <h3 className="text-2xl font-bold text-slate-800">{subjects.length} วิชา</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">รายวิชาทั้งหมด</p>
+                <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{subjects.length} วิชา</h3>
               </div>
             </div>
           </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
             <div className="flex items-center gap-4 mb-4">
-              <div className="p-3 bg-purple-50 text-purple-600 rounded-xl"><FileSpreadsheet size={24} /></div>
+              <div className="p-3 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl"><FileSpreadsheet size={24} /></div>
               <div>
-                <p className="text-sm text-slate-500">บันทึกคะแนนแล้ว</p>
-                <h3 className="text-2xl font-bold text-slate-800">{scores.length} รายการ</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">บันทึกคะแนนแล้ว</p>
+                <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{scores.length} รายการ</h3>
               </div>
             </div>
           </div>
         </div>
 
         {/* Grading Progress by Class */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-sm font-bold text-slate-800 mb-3">ความคืบหน้า (แยกตามห้อง)</h3>
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">ความคืบหน้า (แยกตามห้อง)</h3>
           <div className="flex flex-wrap gap-3">
             {Object.entries(classProgress).map(([className, progress]) => {
               const percentage = progress.total > 0 ? Math.round((progress.graded / progress.total) * 100) : 0;
               return (
-                <div key={className} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-lg border border-slate-100">
-                  <span className="font-bold text-slate-700 text-sm">{className}</span>
+                <div key={className} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-700">
+                  <span className="font-bold text-slate-700 dark:text-slate-200 text-sm">{className}</span>
                   <div className={cn("text-xs font-bold px-1.5 py-0.5 rounded-md",
                     percentage === 100 ? "bg-emerald-100 text-emerald-700" :
                       percentage > 50 ? "bg-blue-100 text-blue-700" :
@@ -902,14 +902,14 @@ export default function GradingSystem() {
         </div>
 
         {/* Student List Table */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="p-4 lg:p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+          <div className="p-4 lg:p-6 border-b border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-800">รายชื่อนักเรียน</h2>
-              <p className="text-sm text-slate-500">จัดการข้อมูลนักเรียนทั้งหมด</p>
+              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">รายชื่อนักเรียน</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">จัดการข้อมูลนักเรียนทั้งหมด</p>
             </div>
             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-              <label className="flex-1 sm:flex-none cursor-pointer flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors text-sm">
+              <label className="flex-1 sm:flex-none cursor-pointer flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg transition-colors text-sm">
                 <Upload size={18} />
                 <span>นำเข้า CSV</span>
                 <input
@@ -2008,12 +2008,12 @@ export default function GradingSystem() {
               </p>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">รหัสผ่านยืนยัน</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">รหัสผ่านยืนยัน</label>
                   <input
                     type="password"
                     value={clearDataCode}
                     onChange={(e) => setClearDataCode(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-red-500 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
                     placeholder="กรอกรหัสผ่านเพื่อล้างข้อมูล"
                     autoFocus
                     onKeyDown={(e) => {
@@ -2033,7 +2033,7 @@ export default function GradingSystem() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setIsClearDataModalOpen(false)}
-                    className="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium"
+                    className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 font-medium"
                   >
                     ยกเลิก
                   </button>
@@ -2067,7 +2067,7 @@ export default function GradingSystem() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col"
+              className="bg-white dark:bg-slate-800 rounded-2xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col border border-slate-100 dark:border-slate-700"
             >
               <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4 shrink-0">
                 <div>
@@ -2302,10 +2302,10 @@ export default function GradingSystem() {
                 )}
               </div>
 
-              <div className="pt-4 border-t border-slate-100 mt-4 flex justify-end shrink-0">
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-700 mt-4 flex justify-end shrink-0">
                 <button
                   onClick={() => setIsStandardSubjectModalOpen(false)}
-                  className="px-6 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 font-medium"
+                  className="px-6 py-2 bg-slate-800 dark:bg-slate-700 text-white rounded-lg hover:bg-slate-900 dark:hover:bg-slate-600 font-medium"
                 >
                   ปิดหน้าต่าง
                 </button>
@@ -2326,8 +2326,8 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, hasSubmenu, isOpen }:
     className={cn(
       "w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 group relative",
       active
-        ? "bg-emerald-50 text-emerald-700 shadow-sm"
-        : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+        ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 shadow-sm"
+        : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100"
     )}
     title={!label ? "เมนู" : undefined}
   >
@@ -2353,8 +2353,8 @@ const SidebarSubItem = ({ label, active, onClick }: any) => (
     className={cn(
       "w-full text-left pl-12 pr-4 py-2 text-sm rounded-lg transition-colors relative",
       active
-        ? "text-emerald-700 font-medium bg-emerald-50/50"
-        : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+        ? "text-emerald-700 dark:text-emerald-400 font-medium bg-emerald-50/50 dark:bg-emerald-900/20"
+        : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800"
     )}
   >
     {active && (
