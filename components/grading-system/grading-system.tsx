@@ -111,6 +111,21 @@ export default function GradingSystem() {
   const [clearDataCode, setClearDataCode] = useState('');
   const [isStandardSubjectModalOpen, setIsStandardSubjectModalOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isEditingTemplate, setIsEditingTemplate] = useState(false);
+  const [standardSubjectsTemplate, setStandardSubjectsTemplate] = useState<Partial<Subject>[]>([
+    { name: 'ภาษาไทย', type: 'พื้นฐาน', credit: 1 },
+    { name: 'คณิตศาสตร์', type: 'พื้นฐาน', credit: 1 },
+    { name: 'วิทยาศาสตร์และเทคโนโลยี', type: 'พื้นฐาน', credit: 1 },
+    { name: 'ภาษาอังกฤษ', type: 'พื้นฐาน', credit: 1 },
+    { name: 'สังคมศึกษา ศาสนา และวัฒนธรรม', type: 'พื้นฐาน', credit: 1 },
+    { name: 'หน้าที่พลเมือง', type: 'พื้นฐาน', credit: 1 },
+    { name: 'ประวัติศาสตร์', type: 'พื้นฐาน', credit: 1 },
+    { name: 'การงานอาชีพ', type: 'พื้นฐาน', credit: 1 },
+    { name: 'สังคม เพิ่มเติม (ป้องกันทุจริต)', type: 'เพิ่มเติม', credit: 1 },
+    { name: 'ศิลปะ', type: 'พื้นฐาน', credit: 1 },
+    { name: 'สุขศึกษาและพลศึกษา', type: 'พื้นฐาน', credit: 1 },
+    { name: 'เพิ่มเติม (หน้าที่พลเมือง)', type: 'เพิ่มเติม', credit: 1 },
+  ]);
 
   // Theme Handling
   useEffect(() => {
@@ -177,9 +192,11 @@ export default function GradingSystem() {
         const loadedStudents = localStorage.getItem('grading_students');
         const loadedSubjects = localStorage.getItem('grading_subjects');
         const loadedScores = localStorage.getItem('grading_scores');
+        const loadedTemplate = localStorage.getItem('grading_standard_template');
         if (loadedStudents) setStudents(JSON.parse(loadedStudents));
         if (loadedSubjects) setSubjects(JSON.parse(loadedSubjects));
         if (loadedScores) setScores(JSON.parse(loadedScores));
+        if (loadedTemplate) setStandardSubjectsTemplate(JSON.parse(loadedTemplate));
       }
       setIsLoaded(true);
     };
@@ -200,6 +217,7 @@ export default function GradingSystem() {
         defaultYear: defaultAcademicYear,
         lockedYear: lockedYear
       }));
+      localStorage.setItem('grading_standard_template', JSON.stringify(standardSubjectsTemplate));
 
       const timer = setTimeout(async () => {
         // Debounced Cloud Sync
@@ -422,39 +440,21 @@ export default function GradingSystem() {
       setShowAdminLogin(true);
       return;
     }
-    const gradeNum = parseInt(grade) || 1;
-    let subjectsToLoad = [
-      { code: `ท1${gradeNum}101`, name: 'ภาษาไทย', type: 'พื้นฐาน', credit: 5 },
-      { code: `ค1${gradeNum}101`, name: 'คณิตศาสตร์', type: 'พื้นฐาน', credit: 5 },
-      { code: `ว1${gradeNum}101`, name: 'วิทยาศาสตร์และเทคโนโลยี', type: 'พื้นฐาน', credit: 2 },
-      { code: `ส1${gradeNum}101`, name: 'สังคมศึกษา ศาสนา และวัฒนธรรม', type: 'พื้นฐาน', credit: 2 },
-      { code: `ส1${gradeNum}102`, name: 'ประวัติศาสตร์', type: 'พื้นฐาน', credit: 1 },
-      { code: `พ1${gradeNum}101`, name: 'สุขศึกษาและพลศึกษา', type: 'พื้นฐาน', credit: 1 },
-      { code: `ศ1${gradeNum}101`, name: 'ศิลปะ', type: 'พื้นฐาน', credit: 1 },
-      { code: `ง1${gradeNum}101`, name: 'การงานอาชีพ', type: 'พื้นฐาน', credit: 1 },
-      { code: `อ1${gradeNum}101`, name: 'ภาษาอังกฤษ', type: 'พื้นฐาน', credit: 3 },
-      { code: `ส1${gradeNum}231`, name: 'หน้าที่พลเมือง', type: 'เพิ่มเติม', credit: 1 },
-      { code: `ส1${gradeNum}201`, name: 'วิชาเพิ่มเติม (ป้องกันการทุจริต)', type: 'เพิ่มเติม', credit: 1 },
-      { code: `ก1${gradeNum}901`, name: 'กิจกรรมแนะแนว', type: 'กิจกรรม', credit: 1 },
-      { code: `ก1${gradeNum}902`, name: 'กิจกรรมนร. (ลูกเสือ/เนตรนารี)', type: 'กิจกรรม', credit: 1 },
-      { code: `ก1${gradeNum}903`, name: 'กิจกรรมนร. (ชุมนุม)', type: 'กิจกรรม', credit: 1 },
-      { code: `ก1${gradeNum}904`, name: 'กิจกรรมเพื่อสังคมและสาธารณประโยชน์', type: 'กิจกรรม', credit: 1 },
-    ];
-
-    if (gradeNum === 1) {
-      // Specific latest P.1 subjects adjustment if needed
-    }
 
     setSubjects(prev => {
       let addedCount = 0;
-      const existing = new Set(prev.map(s => s.code + s.semester));
-      const newSubjects = subjectsToLoad
-        .filter(s => !existing.has(s.code + activeSemester))
+      const existingNames = new Set(prev.filter(s => s.semester === activeSemester).map(s => s.name));
+
+      const newSubjects = standardSubjectsTemplate
+        .filter(s => !existingNames.has(s.name || ''))
         .map(s => {
           addedCount++;
           return {
-            ...s,
-            id: `sub-${Date.now()}-${s.code}`,
+            id: `sub-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            code: '', // No code as requested
+            name: s.name,
+            type: s.type || 'พื้นฐาน',
+            credit: s.credit || 1,
             semester: activeSemester,
             maxScore: 100
           } as Subject;
@@ -2071,135 +2071,233 @@ export default function GradingSystem() {
             >
               <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4 shrink-0">
                 <div>
-                  <h3 className="text-xl font-bold text-slate-800">ตั้งค่าโหมดวิชามาตรฐาน</h3>
-                  <p className="text-sm text-slate-500">จัดการรายวิชาสำหรับทุกระดับชั้น (คุณสามารถลบวิชาได้ที่นี่)</p>
+                  <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">ตั้งค่าวิชามาตรฐาน</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">จัดการรายวิชาสำหรับทุกระดับชั้น หรือแก้ไขแม่แบบพื้นฐาน</p>
                 </div>
-                <button onClick={() => setIsStandardSubjectModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => {
+                  setIsStandardSubjectModalOpen(false);
+                  setIsEditingTemplate(false);
+                }} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
                   <X size={24} />
                 </button>
               </div>
 
-              <div className="overflow-y-auto flex-1 pr-2">
-                <div className="mb-4">
+              {isAdminMode && (
+                <div className="flex bg-slate-100 dark:bg-slate-900/50 p-1 rounded-xl mb-4 shrink-0">
                   <button
-                    onClick={() => {
-                      if (confirm('ต้องการโหลดวิชามาตรฐานทั้งหมดใหม่หรือไม่? (วิชาเดิมจะไม่ได้รับผลกระทบหากใช้รหัสอื่น)')) {
-                        loadStandardSubjects(gradingGrade || '1');
-                      }
-                    }}
-                    className="w-full py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors border border-emerald-200"
+                    onClick={() => setIsEditingTemplate(false)}
+                    className={cn(
+                      "flex-1 py-1.5 rounded-lg text-xs font-bold transition-all",
+                      !isEditingTemplate
+                        ? "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 shadow-sm"
+                        : "text-slate-500 dark:text-slate-400"
+                    )}
                   >
-                    <BookOpen size={16} />
-                    โหลดเซ็ตวิชามาตรฐาน ป.{gradingGrade || '1'} (ล่าสุด)
+                    จัดการวิชาในเทอมนี้
+                  </button>
+                  <button
+                    onClick={() => setIsEditingTemplate(true)}
+                    className={cn(
+                      "flex-1 py-1.5 rounded-lg text-xs font-bold transition-all",
+                      isEditingTemplate
+                        ? "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 shadow-sm"
+                        : "text-slate-500 dark:text-slate-400"
+                    )}
+                  >
+                    แก้ไขแม่แบบ (Standard Template)
                   </button>
                 </div>
+              )}
 
-                {subjects.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400">ยังไม่มีรายวิชาในระบบ</div>
-                ) : (
-                  <div className="space-y-3">
-                    {subjects.map(subject => (
-                      <div key={subject.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-3">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">ชื่อวิชา</label>
-                            <input
-                              type="text"
-                              value={subject.name}
-                              readOnly={!isAdminMode}
-                              onClick={() => !isAdminMode && setShowAdminLogin(true)}
-                              onChange={(e) => {
-                                if (!isAdminMode) return;
-                                setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, name: e.target.value } : s));
-                              }}
-                              className={cn(
-                                "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500",
-                                !isAdminMode ? "text-slate-400 cursor-not-allowed" : "text-slate-800 dark:text-slate-100"
-                              )}
-                            />
+              <div className="overflow-y-auto flex-1 pr-2">
+                {!isEditingTemplate ? (
+                  <>
+                    <div className="mb-4">
+                      <button
+                        onClick={() => {
+                          if (confirm('ต้องการโหลดวิชามาตรฐานทั้งหมดใหม่หรือไม่? (วิชาเดิมจะยังคงอยู่ แต่อาจมีวิชาซ้ำถ้าใช้ชื่อเดียวกัน)')) {
+                            loadStandardSubjects(gradingGrade || '1');
+                          }
+                        }}
+                        className="w-full py-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors border border-emerald-200 dark:border-emerald-800"
+                      >
+                        <BookOpen size={16} />
+                        โหลดจากแม่แบบล่าสุด (ป.{gradingGrade || '1'})
+                      </button>
+                    </div>
+
+                    {subjects.length === 0 ? (
+                      <div className="text-center py-8 text-slate-400">ยังไม่มีรายวิชาในระบบ</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {subjects.map(subject => (
+                          <div key={subject.id} className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col gap-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">ชื่อวิชา</label>
+                                <input
+                                  type="text"
+                                  value={subject.name}
+                                  readOnly={!isAdminMode}
+                                  onClick={() => !isAdminMode && setShowAdminLogin(true)}
+                                  onChange={(e) => {
+                                    if (!isAdminMode) return;
+                                    setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, name: e.target.value } : s));
+                                  }}
+                                  className={cn(
+                                    "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500",
+                                    !isAdminMode ? "text-slate-400 cursor-not-allowed" : "text-slate-800 dark:text-slate-100"
+                                  )}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">รหัสวิชา</label>
+                                <input
+                                  type="text"
+                                  value={subject.code}
+                                  readOnly={!isAdminMode}
+                                  onClick={() => !isAdminMode && setShowAdminLogin(true)}
+                                  onChange={(e) => {
+                                    if (!isAdminMode) return;
+                                    setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, code: e.target.value } : s));
+                                  }}
+                                  className={cn(
+                                    "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-mono outline-none focus:ring-2 focus:ring-emerald-500",
+                                    !isAdminMode ? "text-slate-400 cursor-not-allowed" : "text-slate-700 dark:text-slate-200"
+                                  )}
+                                />
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-3">
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">ประเภท</label>
+                                <select
+                                  value={subject.type || 'พื้นฐาน'}
+                                  disabled={!isAdminMode}
+                                  onChange={(e) => {
+                                    if (!isAdminMode) return;
+                                    setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, type: e.target.value as any } : s));
+                                  }}
+                                  className={cn(
+                                    "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-500",
+                                    !isAdminMode ? "text-slate-400" : "text-slate-800 dark:text-slate-100"
+                                  )}
+                                >
+                                  <option value="พื้นฐาน">พื้นฐาน</option>
+                                  <option value="เพิ่มเติม">เพิ่มเติม</option>
+                                  <option value="กิจกรรม">กิจกรรม</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">หน่วยกิต</label>
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  value={subject.credit || 0}
+                                  readOnly={!isAdminMode}
+                                  onClick={() => !isAdminMode && setShowAdminLogin(true)}
+                                  onChange={(e) => {
+                                    if (!isAdminMode) return;
+                                    setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, credit: Number(e.target.value) } : s));
+                                  }}
+                                  className={cn(
+                                    "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-500",
+                                    !isAdminMode ? "text-slate-400 cursor-not-allowed" : "text-slate-800 dark:text-slate-100"
+                                  )}
+                                />
+                              </div>
+                              <div className="flex items-end">
+                                <button
+                                  onClick={() => {
+                                    if (!isAdminMode) {
+                                      setShowAdminLogin(true);
+                                      return;
+                                    }
+                                    if (confirm(`ต้องการลบวิชา ${subject.name} ใช่หรือไม่?`)) {
+                                      setSubjects(prev => prev.filter(s => s.id !== subject.id));
+                                      setScores(prev => prev.filter(s => s.subjectId !== subject.id));
+                                    }
+                                  }}
+                                  className={cn(
+                                    "w-full py-2 rounded-lg transition-colors flex items-center justify-center gap-2",
+                                    !isAdminMode
+                                      ? "bg-slate-100 dark:bg-slate-700 text-slate-400"
+                                      : "bg-red-50 dark:bg-red-900/30 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50"
+                                  )}
+                                >
+                                  <Trash2 size={16} />
+                                  <span className="text-[10px] font-bold">ลบทิ้ง</span>
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">รหัสวิชา</label>
-                            <input
-                              type="text"
-                              value={subject.code}
-                              readOnly={!isAdminMode}
-                              onClick={() => !isAdminMode && setShowAdminLogin(true)}
-                              onChange={(e) => {
-                                if (!isAdminMode) return;
-                                setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, code: e.target.value } : s));
-                              }}
-                              className={cn(
-                                "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-mono outline-none focus:ring-2 focus:ring-emerald-500",
-                                !isAdminMode ? "text-slate-400 cursor-not-allowed" : "text-slate-700 dark:text-slate-200"
-                              )}
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3">
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">ประเภท</label>
-                            <select
-                              value={subject.type || 'พื้นฐาน'}
-                              disabled={!isAdminMode}
-                              onChange={(e) => {
-                                if (!isAdminMode) return;
-                                setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, type: e.target.value as any } : s));
-                              }}
-                              className={cn(
-                                "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-500",
-                                !isAdminMode ? "text-slate-400" : "text-slate-800 dark:text-slate-100"
-                              )}
-                            >
-                              <option value="พื้นฐาน">พื้นฐาน</option>
-                              <option value="เพิ่มเติม">เพิ่มเติม</option>
-                              <option value="กิจกรรม">กิจกรรม</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">หน่วยกิต</label>
-                            <input
-                              type="number"
-                              step="0.5"
-                              value={subject.credit || 0}
-                              readOnly={!isAdminMode}
-                              onClick={() => !isAdminMode && setShowAdminLogin(true)}
-                              onChange={(e) => {
-                                if (!isAdminMode) return;
-                                setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, credit: Number(e.target.value) } : s));
-                              }}
-                              className={cn(
-                                "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-500",
-                                !isAdminMode ? "text-slate-400 cursor-not-allowed" : "text-slate-800 dark:text-slate-100"
-                              )}
-                            />
-                          </div>
-                          <div className="flex items-end">
-                            <button
-                              onClick={() => {
-                                if (!isAdminMode) {
-                                  setShowAdminLogin(true);
-                                  return;
-                                }
-                                if (confirm(`ต้องการลบวิชา ${subject.name} ใช่หรือไม่?`)) {
-                                  setSubjects(prev => prev.filter(s => s.id !== subject.id));
-                                  setScores(prev => prev.filter(s => s.subjectId !== subject.id));
-                                }
-                              }}
-                              className={cn(
-                                "w-full py-2 rounded-lg transition-colors flex items-center justify-center gap-2",
-                                !isAdminMode
-                                  ? "bg-slate-100 dark:bg-slate-700 text-slate-400"
-                                  : "bg-red-50 dark:bg-red-900/30 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50"
-                              )}
-                            >
-                              <Trash2 size={16} />
-                              <span className="text-[10px] font-bold">ลบทิ้ง</span>
-                            </button>
-                          </div>
-                        </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
+                      <span className="text-xs font-bold text-slate-600 dark:text-slate-400">รายการแม่แบบวิชามาตรฐาน (มีทั้งหมด {standardSubjectsTemplate.length} วิชา)</span>
+                      <button
+                        onClick={() => {
+                          setStandardSubjectsTemplate([...standardSubjectsTemplate, { name: 'วิชาใหม่', type: 'พื้นฐาน', credit: 1 }]);
+                        }}
+                        className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700"
+                      >
+                        เพิ่มวิชา
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {standardSubjectsTemplate.map((item, idx) => (
+                        <div key={idx} className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row gap-2">
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => {
+                              const newTemplate = [...standardSubjectsTemplate];
+                              newTemplate[idx].name = e.target.value;
+                              setStandardSubjectsTemplate(newTemplate);
+                            }}
+                            className="flex-1 bg-slate-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg text-sm font-bold outline-none border border-transparent focus:border-emerald-500 dark:text-slate-100"
+                            placeholder="ชื่อวิชา"
+                          />
+                          <select
+                            value={item.type}
+                            onChange={(e) => {
+                              const newTemplate = [...standardSubjectsTemplate];
+                              newTemplate[idx].type = e.target.value as any;
+                              setStandardSubjectsTemplate(newTemplate);
+                            }}
+                            className="w-full sm:w-28 bg-slate-50 dark:bg-slate-900 px-2 py-1.5 rounded-lg text-xs outline-none border border-transparent focus:border-emerald-500 dark:text-slate-200"
+                          >
+                            <option value="พื้นฐาน">พื้นฐาน</option>
+                            <option value="เพิ่มเติม">เพิ่มเติม</option>
+                            <option value="กิจกรรม">กิจกรรม</option>
+                          </select>
+                          <input
+                            type="number"
+                            step="0.5"
+                            value={item.credit}
+                            onChange={(e) => {
+                              const newTemplate = [...standardSubjectsTemplate];
+                              newTemplate[idx].credit = Number(e.target.value);
+                              setStandardSubjectsTemplate(newTemplate);
+                            }}
+                            className="w-full sm:w-16 bg-slate-50 dark:bg-slate-900 px-2 py-1.5 rounded-lg text-xs text-center border border-transparent focus:border-emerald-500 dark:text-slate-200"
+                          />
+                          <button
+                            onClick={() => {
+                              setStandardSubjectsTemplate(standardSubjectsTemplate.filter((_, i) => i !== idx));
+                            }}
+                            className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg shrink-0"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
