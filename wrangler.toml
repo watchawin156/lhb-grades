@@ -1,7 +1,12 @@
 name = "lhb-grades"
-pages_build_output_dir = ".next"
+pages_build_output_dir = "out"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "lhb-grades-db"
 database_id = "01e4565c-7c5e-48c0-b2ae-f25e876b3fe3"
+
+[[d1_databases]]
+binding = "STUDENTS_DB"
+database_name = "lhb-students-db"
+database_id = "8f4a2c54-10a7-4f55-a99e-e2dd71bd433a"

@@ -1,0 +1,133 @@
+export const onRequest: PagesFunction<{ DB: D1Database; STUDENTS_DB: D1Database }> = async (context) => {
+    const { env, request } = context;
+    const db = env.DB;
+    const sdb = env.STUDENTS_DB;
+
+    if (!db || !sdb) {
+        return Response.json({ error: "One or more D1 bindings not found" }, { status: 500 });
+    }
+
+    if (request.method === "GET") {
+        try {
+            const url = new URL(request.url);
+            const filterGrade = url.searchParams.get('grade');
+            const filterYear = url.searchParams.get('year');
+
+            let studentsQuery = "SELECT * FROM students";
+            const params: any[] = [];
+
+            if (filterGrade || filterYear) {
+                studentsQuery += " WHERE ";
+                const conditions = [];
+                if (filterGrade) {
+                    conditions.push("grade LIKE ?");
+                    params.push(`%${filterGrade}%`);
+                }
+                if (filterYear) {
+                    conditions.push("academicYear = ?");
+                    params.push(filterYear);
+                }
+                studentsQuery += conditions.join(" AND ");
+            }
+            studentsQuery += " ORDER BY academicYear DESC, grade ASC, number ASC";
+
+            const [stdRes, subRes, scoRes] = await Promise.all([
+                sdb.prepare(studentsQuery).bind(...params).all(),
+                db.prepare("SELECT * FROM subjects").all(),
+                db.prepare("SELECT * FROM scores").all()
+            ]);
+
+            // Map STUDENTS_DB (lhb-students) schema to Frontend Student format 
+            const students = (stdRes.results as any[]).map(s => ({
+                id: s.id,
+                code: s.studentId || '',
+                name: `${s.prefix || ''}${s.firstName || ''} ${s.lastName || ''}`.trim(),
+                class: s.grade || '',
+                room: s.room || '',
+                number: s.number || '',
+                year: Number(s.academicYear) || 2568
+            }));
+
+            const d1Scores = scoRes.results as any[];
+            const scoreMap: Record<string, any> = {};
+            d1Scores.forEach(s => {
+                const key = `${s.student_internal_id}-${s.subject_internal_id}-${s.academic_year}`;
+                if (!scoreMap[key]) {
+                    scoreMap[key] = {
+                        studentId: s.student_internal_id,
+                        subjectId: s.subject_internal_id,
+                        score1: 0,
+                        score2: 0,
+                        year: s.academic_year
+                    };
+                }
+                if (s.semester === 1) scoreMap[key].score1 = s.score;
+                if (s.semester === 2) scoreMap[key].score2 = s.score;
+            });
+
+            return Response.json({
+                students,
+                subjects: subRes.results,
+                scores: Object.values(scoreMap)
+            });
+        } catch (error: any) {
+            return Response.json({ error: error.message }, { status: 500 });
+        }
+    }
+
+    if (request.method === "POST") {
+        try {
+            const { students = [], subjects = [], scores = [] } = await request.json() as any;
+            const gradeQueries: any[] = [];
+            const studentQueries: any[] = [];
+
+            // 1. Students -> lhb-students-db (STUDENTS_DB)
+            // Note: We use INSERT OR REPLACE instead of DELETE to avoid wiping other apps' data
+            students.forEach((s: any) => {
+                const fullName = (s.name || '').trim();
+                const parts = fullName.split(' ');
+                const firstName = parts[0] || '';
+                const lastName = parts.slice(1).join(' ') || '';
+
+                studentQueries.push(sdb.prepare(`
+                    INSERT OR REPLACE INTO students 
+                    (id, studentId, firstName, lastName, grade, room, number, academicYear) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                `).bind(s.id, s.code, firstName, lastName, s.class, s.room || null, s.number || null, s.year.toString()));
+            });
+
+            // 2. Subjects -> lhb-grades-db (DB)
+            gradeQueries.push(db.prepare("DELETE FROM subjects"));
+            subjects.forEach((s: any) => {
+                gradeQueries.push(db.prepare("INSERT INTO subjects (id, code, name, maxScore, semester, type, credit) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                    .bind(s.id, s.code, s.name, s.maxScore, s.semester, s.type || 'พื้นฐาน', s.credit || 1));
+            });
+
+            // 3. Scores -> lhb-grades-db (DB)
+            gradeQueries.push(db.prepare("DELETE FROM scores"));
+            scores.forEach((s: any) => {
+                if (s.score1 !== undefined) {
+                    gradeQueries.push(db.prepare("INSERT INTO scores (student_internal_id, subject_internal_id, score, academic_year, semester) VALUES (?, ?, ?, ?, ?)")
+                        .bind(s.studentId, s.subjectId, s.score1, Number(s.year), 1));
+                }
+                if (s.score2 !== undefined) {
+                    gradeQueries.push(db.prepare("INSERT INTO scores (student_internal_id, subject_internal_id, score, academic_year, semester) VALUES (?, ?, ?, ?, ?)")
+                        .bind(s.studentId, s.subjectId, s.score2, Number(s.year), 2));
+                }
+            });
+
+            // Execute in separate batches for separate databases
+            await Promise.all([
+                sdb.batch(studentQueries),
+                db.batch(gradeQueries)
+            ]);
+
+            return Response.json({ success: true });
+        } catch (error: any) {
+            console.error("D1 Batch Error:", error);
+            return Response.json({ error: error.message }, { status: 500 });
+        }
+    }
+
+    return Response.json({ error: "Method Not Allowed" }, { status: 405 });
+};
