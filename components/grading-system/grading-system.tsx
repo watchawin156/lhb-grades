@@ -786,7 +786,9 @@ export default function GradingSystem() {
         (id1: string, id2: string) => {
           const r = getScoreRecord(id1, id2);
           if (!r) return 0;
-          return activeSemester === 1 ? r.score1 : r.score2;
+          const sub = subjects.find(s => s.id === id2);
+          if (!sub) return 0;
+          return sub.semester === 1 ? r.score1 : r.score2;
         }
       );
       setIsReportModalOpen(false);

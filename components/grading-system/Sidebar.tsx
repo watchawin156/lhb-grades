@@ -2,7 +2,10 @@
 
 import { useState, useRef } from 'react';
 
-import { ChevronRight, ChevronLeft, LayoutDashboard, Settings, FileBarChart, Sun, Moon, Table as TableIcon } from 'lucide-react';
+import {
+  ChevronRight, ChevronLeft, LayoutDashboard, Settings, FileBarChart,
+  Sun, Moon, Table as TableIcon, BookOpen
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/grading-utils';
 import { SidebarItem, SidebarSubItem } from './types';
@@ -138,6 +141,19 @@ export default function Sidebar(props: SidebarProps) {
             if (window.innerWidth < 1024) setIsMobileMenuOpen(false);
           }}
         />
+
+        {isAdminMode && (
+          <SidebarItem
+            icon={BookOpen}
+            label={(isSidebarCollapsed && !isMobileMenuOpen) ? "" : "ตั้งค่ารายวิชา"}
+            active={activeTab === 'subjects'}
+            onClick={() => {
+              setActiveTab('subjects');
+              setIsGradingOpen(false);
+              if (window.innerWidth < 1024) setIsMobileMenuOpen(false);
+            }}
+          />
+        )}
 
         {isAdminMode && (
           <button

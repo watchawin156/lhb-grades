@@ -187,25 +187,21 @@ export default function GradingView({
                             ))}
                         </select>
                         <button
+                            onClick={() => setIsReportModalOpen(true)}
+                            className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-2xl font-black text-xs shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+                        >
+                            <FileText size={16} />
+                            พิมพ์ ปพ.6
+                        </button>
+                        <button
                             onClick={exportCSV}
                             className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-2xl font-black text-xs shadow-lg shadow-emerald-500/20 active:scale-95 transition-all"
                         >
                             <Download size={16} />
-                            ส่งออก
+                            ส่งออก CSV
                         </button>
                     </div>
                 </div>
-            </div>
-
-            {/* Quick Tips Card */}
-            <div className="mx-1 px-4 py-3 bg-white/40 dark:bg-slate-900/40 backdrop-blur-sm border border-emerald-500/10 rounded-2xl flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                    <Plus size={16} className="animate-pulse" />
-                </div>
-                <p className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
-                    <span className="text-emerald-600 dark:text-emerald-400">💡 เคล็ดลับ:</span>
-                    {isAdminMode ? " คุณกำลังอยู่ในโหมดตรวจสอบข้อมูล (ไม่สามารถแก้ไขได้)" : " ดับเบิลคลิกที่ 'ชื่อวิชา' เพื่อเปิดการกรอกทั้งคอลัมน์ และใช้ปุ่ม Enter เพื่อเลื่อนลงอย่างรวดเร็ว"}
-                </p>
             </div>
 
             {/* Grading Table */}

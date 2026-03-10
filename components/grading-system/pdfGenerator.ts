@@ -282,9 +282,15 @@ export async function generatePDF(
 
     // --- Open PDF in New Tab ---
     const pdfBytes = await pdfDoc.save();
-    const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+    const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (e) {
     console.error('PDF Error:', e);
     alert('เกิดข้อผิดพลาดในการสร้าง PDF ครับ');
