@@ -29,7 +29,6 @@ export const onRequest: PagesFunction<{ DB: D1Database; STUDENTS_DB: D1Database 
                 }
                 studentsQuery += conditions.join(" AND ");
             }
-            studentsQuery += " ORDER BY academicYear DESC, grade ASC, number ASC";
 
             const [stdRes, subRes, scoRes] = await Promise.all([
                 sdb.prepare(studentsQuery).bind(...params).all(),
@@ -47,6 +46,17 @@ export const onRequest: PagesFunction<{ DB: D1Database; STUDENTS_DB: D1Database 
                 number: s.number || '',
                 year: Number(s.academicYear) || 2568
             }));
+
+            // Robust Sorting in JavaScript instead of SQL to avoid missing column issues
+            students.sort((a, b) => {
+                if (a.year !== b.year) return b.year - a.year; // Year DESC
+                const gradeA = a.class || '';
+                const gradeB = b.class || '';
+                if (gradeA !== gradeB) return gradeA.localeCompare(gradeB); // Grade ASC
+                const numA = parseInt(a.number) || 999;
+                const numB = parseInt(b.number) || 999;
+                return numA - numB; // Number ASC
+            });
 
             const d1Scores = scoRes.results as any[];
             const scoreMap: Record<string, any> = {};

@@ -75,7 +75,6 @@ export default function GradingSystem() {
   const [isTelegramBacking, setIsTelegramBacking] = useState(false);
   const [lastTelegramBackup, setLastTelegramBackup] = useState<Date | null>(null);
   const [telegramBackupStatus, setTelegramBackupStatus] = useState<'idle' | 'ok' | 'error'>('idle');
-  const [syncError, setSyncError] = useState<string | null>(null);
 
   const [newSubject, setNewSubject] = useState<Partial<Subject>>({
     code: '',
@@ -226,7 +225,6 @@ export default function GradingSystem() {
         }
       } catch (e) {
         console.error("Failed to load data from cloud", e);
-        setSyncError("ไม่สามารถเชื่อมต่อฐานข้อมูล Cloud ได้");
       }
       setIsLoaded(true);
     };
@@ -245,10 +243,15 @@ export default function GradingSystem() {
       if (response.ok) {
         const cloudData = await response.json();
         if (cloudData.students) {
-          setStudents(cloudData.students);
+          // Filter out Kindergarten 2 & 3
+          const filteredStudents = cloudData.students.filter((s: Student) =>
+            !s.class.includes('อ.2') &&
+            !s.class.includes('อ.3')
+          );
+          setStudents(filteredStudents);
           // Optional: You might want to merge or replace scores too if they are year-specific
           // setScores(cloudData.scores || []); 
-          alert(`โหลดข้อมูลนักเรียน ${cloudData.students.length} คน เรียบร้อยแล้ว`);
+          alert(`โหลดข้อมูลนักเรียน ${filteredStudents.length} คน เรียบร้อยแล้ว`);
         }
       }
     } catch (e) {
@@ -280,15 +283,12 @@ export default function GradingSystem() {
           });
           if (res.ok) {
             setLastSynced(new Date());
-            setSyncError(null);
           } else {
             const err = await res.json();
-            setSyncError(err.error || "Sync failed");
             console.error("Cloud sync error:", err);
           }
         } catch (e) {
           console.error("Cloud sync network failed", e);
-          setSyncError("Network error: Cannot reach Cloud");
         }
         setIsSaving(false);
         setLastSaved(new Date());

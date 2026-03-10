@@ -44,24 +44,33 @@ export async function generatePDF(
     const grayBg = rgb(0.9, 0.9, 0.9);
 
     // Helper: draw text
-    const txt = (pg: any, text: string, x: number, y: number, sz: number, bold = false, clr = black) => {
-      pg.drawText(String(text ?? ''), { x, y, size: sz, font: bold ? fBold : fReg, color: clr });
+    const txt = (pg: any, text: any, x: number, y: number, sz: number, bold = false, clr = black) => {
+      const str = String(text ?? '');
+      pg.drawText(str, { x, y: y || 0, size: sz || 10, font: bold ? fBold : fReg, color: clr });
     };
 
     // New Helper: Draw wrapped text
-    const drawWrappedText = (pg: any, text: string, x: number, y: number, sz: number, maxWidth: number, bold = false, clr = black) => {
+    const drawWrappedText = (pg: any, text: any, x: number, y: number, sz: number, maxWidth: number, bold = false, clr = black) => {
       const font = bold ? fBold : fReg;
-      let words = text.split(''); // For Thai, splitting by character is safer than by space
+      const safeText = String(text ?? '');
+      if (!safeText) return 0;
+
+      let words = safeText.split('');
       let lines: string[] = [];
       let currentLine = '';
 
       for (let i = 0; i < words.length; i++) {
         let testLine = currentLine + words[i];
-        let testWidth = font.widthOfTextAtSize(testLine, sz);
-        if (testWidth > maxWidth && i > 0) {
-          lines.push(currentLine);
-          currentLine = words[i];
-        } else {
+        try {
+          let testWidth = font.widthOfTextAtSize(testLine, sz);
+          if (testWidth > maxWidth && i > 0) {
+            lines.push(currentLine);
+            currentLine = words[i];
+          } else {
+            currentLine = testLine;
+          }
+        } catch (err) {
+          console.warn("Character width measurement failed:", words[i]);
           currentLine = testLine;
         }
       }
@@ -69,7 +78,7 @@ export async function generatePDF(
 
       let curRowY = y;
       lines.forEach((ln, i) => {
-        if (i > 1) return; // Max 2 lines to prevent overlapping
+        if (i > 1) return;
         pg.drawText(ln, { x, y: curRowY, size: sz, font, color: clr });
         curRowY -= sz * 0.9;
       });
@@ -197,7 +206,7 @@ export async function generatePDF(
         const isAct = sub.type === 'กิจกรรม';
 
         if (isAct) {
-          fillRect(pg, colX[5], curY - ROW_H, colX[11] - colX[5], ROW_H, grayBg);
+          fillRect(pg, colX[5], curY - ROW_H, colX[9] - colX[5], ROW_H, grayBg);
         }
 
         drawTextCenter(pg, String(rowNum), colX[0], colX[1], curY - ROW_H + 4, 13);
