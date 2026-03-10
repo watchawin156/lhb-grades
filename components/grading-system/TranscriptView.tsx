@@ -63,6 +63,34 @@ export default function TranscriptView({
       const rect = (page: any, x: number, y: number, w: number, h: number, thickness = 0.5) => {
         page.drawRectangle({ x, y, width: w, height: h, borderWidth: thickness, borderColor: black, color: rgb(1, 1, 1) });
       };
+      const drawWrappedText = (page: any, text: any, x: number, y: number, sz: number, maxWidth: number, bold = false, color = black) => {
+        const font = bold ? fBold : fReg;
+        const safeText = String(text ?? '');
+        if (!safeText) return;
+        let currentSz = sz;
+        if (safeText.length > 30) currentSz = sz * 0.8;
+        let words = safeText.split('');
+        let lines: string[] = [];
+        let currentLine = '';
+        for (let i = 0; i < words.length; i++) {
+          let testLine = currentLine + words[i];
+          try {
+            let testWidth = font.widthOfTextAtSize(testLine, currentSz);
+            if (testWidth > maxWidth && i > 0) {
+              lines.push(currentLine);
+              currentLine = words[i];
+            } else {
+              currentLine = testLine;
+            }
+          } catch (err) { currentLine = testLine; }
+        }
+        lines.push(currentLine);
+        let curY = y;
+        lines.slice(0, 2).forEach((ln) => {
+          page.drawText(ln.trim(), { x, y: curY, size: currentSz, font, color });
+          curY -= currentSz * 0.9;
+        });
+      };
       // ── Process Subject Data ──────────────────────────────────────
       // --- Process Multi-Year Subject Data ---
       // Get all years student has data for
@@ -215,9 +243,7 @@ export default function TranscriptView({
             const displayHrs = credit * 40;
 
             const nameStr = sub.name;
-            const displayName = nameStr.length > 20 ? nameStr.substring(0, 19) + '…' : nameStr;
-
-            txt(p1, displayName, p.nameX + 2, ry, 8.5, false);
+            drawWrappedText(p1, nameStr, p.nameX + 2, ry, 8.5, p.hrX - p.nameX - 5);
             txt(p1, `${credit}/${displayHrs}`, p.hrX + 0, ry, 8, false);
             txt(p1, grade, p.gdX + 6, ry, 8.5, false);
 

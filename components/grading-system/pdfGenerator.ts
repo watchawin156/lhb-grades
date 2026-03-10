@@ -55,6 +55,11 @@ export async function generatePDF(
       const safeText = String(text ?? '');
       if (!safeText) return 0;
 
+      // ปรับขนาดฟอนต์ลงหากข้อความยาวมาก
+      let currentSz = sz;
+      if (safeText.length > 40) currentSz = sz * 0.8;
+      else if (safeText.length > 25) currentSz = sz * 0.9;
+
       let words = safeText.split('');
       let lines: string[] = [];
       let currentLine = '';
@@ -62,7 +67,7 @@ export async function generatePDF(
       for (let i = 0; i < words.length; i++) {
         let testLine = currentLine + words[i];
         try {
-          let testWidth = font.widthOfTextAtSize(testLine, sz);
+          let testWidth = font.widthOfTextAtSize(testLine, currentSz);
           if (testWidth > maxWidth && i > 0) {
             lines.push(currentLine);
             currentLine = words[i];
@@ -70,17 +75,15 @@ export async function generatePDF(
             currentLine = testLine;
           }
         } catch (err) {
-          console.warn("Character width measurement failed:", words[i]);
           currentLine = testLine;
         }
       }
       lines.push(currentLine);
 
       let curRowY = y;
-      lines.forEach((ln, i) => {
-        if (i > 1) return;
-        pg.drawText(ln, { x, y: curRowY, size: sz, font, color: clr });
-        curRowY -= sz * 0.9;
+      lines.slice(0, 2).forEach((ln, i) => {
+        pg.drawText(ln.trim(), { x, y: curRowY, size: currentSz, font, color: clr });
+        curRowY -= currentSz * 0.85;
       });
       return lines.length;
     };

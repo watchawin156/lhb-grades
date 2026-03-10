@@ -95,7 +95,6 @@ export default function GradingSystem() {
   // New Modals State
   const [isClearDataModalOpen, setIsClearDataModalOpen] = useState(false);
   const [clearDataCode, setClearDataCode] = useState('');
-  const [isStandardSubjectModalOpen, setIsStandardSubjectModalOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isEditingTemplate, setIsEditingTemplate] = useState(false);
   const [standardSubjectsTemplate, setStandardSubjectsTemplate] = useState<Partial<Subject>[]>([
@@ -798,25 +797,28 @@ export default function GradingSystem() {
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans overflow-hidden transition-colors duration-300">
-      {/* Mobile Toggle & Status */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 p-4 flex items-center justify-between z-40">
-        <button
-          onClick={() => setIsMobileMenuOpen(true)}
-          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400"
-        >
-          <Menu size={20} />
-        </button>
-        <div className="flex items-center gap-2">
-          <div className="text-right">
-            <h1 className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight">ระบบจัดการคะแนน</h1>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">เทอม {activeSemester}/{academicYear}</p>
+      {/* Mobile Top Bar - Glassmorphism */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-white/20 dark:border-slate-800/50 flex items-center justify-between px-6 z-40 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
+            <TableIcon size={18} />
           </div>
+          <div>
+            <h1 className="text-sm font-black text-slate-800 dark:text-slate-100 leading-tight tracking-tight">LHB Grades</h1>
+            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-widest">Premium System</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
           <button
             onClick={toggleTheme}
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400"
+            className="w-10 h-10 flex items-center justify-center bg-slate-100 dark:bg-slate-800 rounded-full text-slate-600 dark:text-slate-400 active:scale-90 transition-transform"
           >
             {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
           </button>
+          {isAdminMode && (
+            <div className="px-2 py-1 bg-amber-500 text-white text-[9px] font-black rounded-lg shadow-sm animate-pulse">ADMIN</div>
+          )}
         </div>
       </div>
 
@@ -853,7 +855,7 @@ export default function GradingSystem() {
       />
 
       {/* Main Content */}
-      <main className="flex-1 p-4 lg:p-8 pt-20 lg:pt-8 overflow-y-auto w-full">
+      <main className="flex-1 p-4 lg:p-8 pt-24 lg:pt-8 pb-32 lg:pb-8 overflow-y-auto w-full scroll-smooth">
         <motion.div
           key={activeTab}
           initial={{ opacity: 0, y: 10 }}
@@ -893,9 +895,10 @@ export default function GradingSystem() {
               getScore={getScoreRecord}
             />
           )}
-          {activeTab.startsWith('grading') && (
+          {activeTab === 'grading' && (
             <GradingView
               gradingGrade={gradingGrade}
+              setGradingGrade={setGradingGrade}
               activeSemester={activeSemester}
               setActiveSemester={setActiveSemester}
               subjects={subjects}
@@ -906,15 +909,104 @@ export default function GradingSystem() {
               setIsAddSubjectOpen={setIsAddSubjectOpen}
               setNewSubject={setNewSubject}
               setIsReportModalOpen={setIsReportModalOpen}
-              setIsStandardSubjectModalOpen={setIsStandardSubjectModalOpen}
               downloadSubjectTemplate={downloadSubjectTemplate}
               setShowAdminLogin={setShowAdminLogin}
               academicYear={academicYear}
               lockedYear={lockedYear}
             />
           )}
+          {activeTab === 'subjects' && isAdminMode && (
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">กำหนดรายวิชาแต่ละชั้น</h2>
+                  <p className="text-slate-500 dark:text-slate-400">เลือกชั้นเรียนเพื่อจัดการรายวิชาพื้นฐาน เพิ่มเติม และกิจกรรม</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                {['1', '2', '3', '4', '5', '6'].map((grade) => (
+                  <button
+                    key={grade}
+                    onClick={() => {
+                      setGradingGrade(grade);
+                      // Open simplified subject management or redirect to a modal
+                      setIsAddSubjectOpen(true);
+                      setNewSubject(prev => ({ ...prev, semester: activeSemester }));
+                    }}
+                    className="p-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 transition-all text-left group"
+                  >
+                    <div className="w-12 h-12 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4 group-hover:scale-110 transition-transform">
+                      <BookOpen size={24} />
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">ชั้นประถมศึกษาปีที่ {grade}</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      {subjects.filter(s => s.code.startsWith(grade === '1' ? 'ท11' : grade === '2' ? 'ท21' : grade === '3' ? 'ท31' : grade === '4' ? 'ท41' : grade === '5' ? 'ท51' : 'ท61')).length} รายวิชา
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </motion.div>
       </main>
+
+      {/* Mobile Bottom Navigation - App-like feel */}
+      <div className="lg:hidden fixed bottom-6 left-6 right-6 h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white/20 dark:border-slate-800/50 rounded-2xl flex items-center justify-around px-2 z-40 shadow-2xl shadow-black/10 transition-all duration-300">
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className={cn(
+            "flex flex-col items-center gap-1 p-2 rounded-xl transition-all active:scale-95",
+            activeTab === 'dashboard' ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-slate-600"
+          )}
+        >
+          <LayoutDashboard size={22} className={activeTab === 'dashboard' ? "drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]" : ""} />
+          <span className="text-[9px] font-bold">ข้อมูลหลัก</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('grading')}
+          className={cn(
+            "flex flex-col items-center gap-1 p-2 rounded-xl transition-all active:scale-95",
+            activeTab.startsWith('grading') ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-slate-600"
+          )}
+        >
+          <TableIcon size={22} className={activeTab.startsWith('grading') ? "drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]" : ""} />
+          <span className="text-[9px] font-bold">กรอกคะแนน</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('transcript')}
+          className={cn(
+            "flex flex-col items-center gap-1 p-2 rounded-xl transition-all active:scale-95",
+            activeTab === 'transcript' ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-slate-600"
+          )}
+        >
+          <FileBarChart size={22} className={activeTab === 'transcript' ? "drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]" : ""} />
+          <span className="text-[9px] font-bold">รายงาน (ปพ.1)</span>
+        </button>
+
+        {isAdminMode ? (
+          <button
+            onClick={() => setActiveTab('subjects')}
+            className={cn(
+              "flex flex-col items-center gap-1 p-2 rounded-xl transition-all active:scale-95",
+              activeTab === 'subjects' ? "text-amber-500" : "text-slate-400 dark:text-slate-600"
+            )}
+          >
+            <BookOpen size={22} className={activeTab === 'subjects' ? "drop-shadow-[0_0_8px_rgba(245,158,11,0.3)]" : ""} />
+            <span className="text-[9px] font-bold">ตั้งค่าวิชา</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowAdminLogin(true)}
+            className="flex flex-col items-center gap-1 p-2 rounded-xl text-slate-400 dark:text-slate-600 active:scale-95"
+          >
+            <Settings size={22} />
+            <span className="text-[9px] font-bold">ผู้ปรกครอง</span>
+          </button>
+        )}
+      </div>
 
       <GradingModals
         isYearSettingsOpen={isYearSettingsOpen} setIsYearSettingsOpen={setIsYearSettingsOpen}
@@ -934,7 +1026,6 @@ export default function GradingSystem() {
         loadStudentsByFilter={loadStudentsByFilter}
         clearDataCode={clearDataCode} setClearDataCode={setClearDataCode}
         setStudents={setStudents} setScores={setScores}
-        isStandardSubjectModalOpen={isStandardSubjectModalOpen} setIsStandardSubjectModalOpen={setIsStandardSubjectModalOpen}
         isAdminMode={isAdminMode} isEditingTemplate={isEditingTemplate} setIsEditingTemplate={setIsEditingTemplate}
         subjects={subjects} setSubjects={setSubjects} scores={scores}
         loadStandardSubjects={loadStandardSubjects}

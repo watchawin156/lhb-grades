@@ -61,49 +61,113 @@ export default function DashboardView({
     };
 
     return (
-        <div className="space-y-6">
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-                    <div className="flex items-center gap-4 mb-4">
-                        <div className="p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl"><Users size={24} /></div>
+        <div className="space-y-8">
+            {/* Minimal Header */}
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                <div>
+                    <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight">แผงควบคุมหลัก</h2>
+                    <p className="text-sm text-slate-500 font-medium">ภาพรวมข้อมูลปีการศึกษา {academicYear} เทอม {activeSemester}</p>
+                </div>
+                {isAdminMode && (
+                    <div className="flex items-center gap-2">
+                        <label className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all shadow-sm active:scale-95">
+                            <Upload size={16} className="text-emerald-500" />
+                            <span className="text-xs font-black text-slate-700 dark:text-slate-300">นำเข้านักเรียน</span>
+                            <input type="file" accept=".csv" onChange={handleImportStudents} className="hidden" />
+                        </label>
+                        <button
+                            onClick={() => setIsClearDataModalOpen(true)}
+                            className="p-2.5 text-rose-500 bg-rose-50 dark:bg-rose-900/10 rounded-2xl hover:bg-rose-100 transition-all active:scale-95 border border-rose-100 dark:border-rose-900/20"
+                            title="ล้างข้อมูลทั้งหมด"
+                        >
+                            <Trash2 size={20} />
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Premium Stats Cards - Mobile App Style */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+                <div className="relative overflow-hidden group p-6 rounded-[2.5rem] bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-xl shadow-blue-500/20 active:scale-98 transition-all">
+                    <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform" />
+                    <div className="relative flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center">
+                            <Users size={24} />
+                        </div>
                         <div>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">นักเรียนทั้งหมด ({academicYear})</p>
-                            <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{studentsInYear.length} คน</h3>
+                            <p className="text-xs font-bold text-white/70 uppercase tracking-widest">นักเรียนทั้งหมด</p>
+                            <h3 className="text-3xl font-black">{studentsInYear.length} <span className="text-sm font-medium">คน</span></h3>
                         </div>
                     </div>
                 </div>
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-                    <div className="flex items-center gap-4 mb-4">
-                        <div className="p-3 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl"><BookOpen size={24} /></div>
+
+                <div className="relative overflow-hidden group p-6 rounded-[2.5rem] bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-xl shadow-emerald-500/20 active:scale-98 transition-all">
+                    <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform" />
+                    <div className="relative flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center">
+                            <BookOpen size={24} />
+                        </div>
                         <div>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">รายวิชาทั้งหมด</p>
-                            <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{subjects.length} วิชา</h3>
+                            <p className="text-xs font-bold text-white/70 uppercase tracking-widest">รายวิชาเปิดสอน</p>
+                            <h3 className="text-3xl font-black">{subjects.filter(s => s.semester === activeSemester).length} <span className="text-sm font-medium">วิชา</span></h3>
                         </div>
                     </div>
                 </div>
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-                    <div className="flex items-center gap-4 mb-4">
-                        <div className="p-3 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl"><FileSpreadsheet size={24} /></div>
+
+                <div className="relative overflow-hidden group p-6 rounded-[2.5rem] bg-gradient-to-br from-purple-600 to-pink-600 text-white shadow-xl shadow-purple-500/20 active:scale-98 transition-all sm:col-span-2 lg:col-span-1">
+                    <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform" />
+                    <div className="relative flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center">
+                            <FileSpreadsheet size={24} />
+                        </div>
                         <div>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">บันทึกคะแนนแล้ว</p>
-                            <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{scores.length} รายการ</h3>
+                            <p className="text-xs font-bold text-white/70 uppercase tracking-widest">รายการคะแนน</p>
+                            <h3 className="text-3xl font-black">{scores.filter(s => s.year === academicYear).length} <span className="text-sm font-medium">ชุด</span></h3>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Grading Progress */}
-            <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">ความคืบหน้า (แยกตามชั้น ป.1-6)</h3>
-                <div className="flex flex-wrap gap-3">
+            {/* Grade Filter Chips - Touch Friendly */}
+            <div className="bg-white/50 dark:bg-slate-900/50 p-4 lg:p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                    <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 uppercase tracking-tighter">ความคืบหน้าแยกตามชั้น</h3>
+                    <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 w-full sm:w-auto invisible-scrollbar">
+                        <button
+                            onClick={() => setSelectedGradeFilter('all')}
+                            className={cn(
+                                "whitespace-nowrap px-4 py-2 rounded-xl text-xs font-black transition-all border",
+                                selectedGradeFilter === 'all'
+                                    ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-transparent shadow-lg"
+                                    : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700"
+                            )}
+                        >
+                            ทั้งหมด
+                        </button>
+                        {['1', '2', '3', '4', '5', '6'].map(grade => (
+                            <button
+                                key={grade}
+                                onClick={() => setSelectedGradeFilter(grade)}
+                                className={cn(
+                                    "whitespace-nowrap px-4 py-2 rounded-xl text-xs font-black transition-all border",
+                                    selectedGradeFilter === grade
+                                        ? "bg-emerald-500 text-white border-transparent shadow-lg shadow-emerald-500/20"
+                                        : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700"
+                                )}
+                            >
+                                ป.{grade}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                     {['1', '2', '3', '4', '5', '6'].map(grade => {
                         const progress = classProgress[`ป.${grade}`] || classProgress[grade] || { total: 0, graded: 0 };
                         const percentage = progress.total > 0 ? Math.round((progress.graded / progress.total) * 100) : 0;
                         return (
-                            <div key={grade} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-700">
-                                <span className="font-bold text-slate-700 dark:text-slate-200 text-sm">ป.{grade}</span>
-                                <div className={cn('text-xs font-bold px-1.5 py-0.5 rounded-md',
+                            <div key={grade} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
+                                <span className="font-black text-slate-700 dark:text-slate-200 text-lg">ป.{grade}</span>
+                                <div className={cn('text-sm font-bold px-2 py-1 rounded-full mt-2',
                                     percentage === 100 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
                                         percentage > 50 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                                             'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-400'

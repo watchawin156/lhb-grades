@@ -42,7 +42,7 @@ export default function Sidebar(props: SidebarProps) {
       onMouseEnter={() => setIsSidebarCollapsed(false)}
       onMouseLeave={() => setIsSidebarCollapsed(true)}
       className={cn(
-        "bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-4 flex flex-col gap-8 transition-all duration-300 fixed lg:relative h-full z-50",
+        "hidden lg:flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-4 gap-8 transition-all duration-300 relative z-50",
         isSidebarCollapsed ? "w-20" : "w-64",
         isMobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
       )}
@@ -114,55 +114,16 @@ export default function Sidebar(props: SidebarProps) {
           }}
         />
 
-        <div
-          onMouseEnter={() => {
-            if (collapseTimer.current) clearTimeout(collapseTimer.current);
-            if (!isSidebarCollapsed) setIsGradingOpen(true);
+        <SidebarItem
+          icon={TableIcon}
+          label={(isSidebarCollapsed && !isMobileMenuOpen) ? "" : "กรอกคะแนน"}
+          active={activeTab.startsWith('grading')}
+          onClick={() => {
+            setActiveTab('grading');
+            setIsGradingOpen(false);
+            if (window.innerWidth < 1024) setIsMobileMenuOpen(false);
           }}
-          onMouseLeave={() => {
-            if (!isSidebarCollapsed) {
-              collapseTimer.current = setTimeout(() => {
-                setIsGradingOpen(false);
-              }, 3000); // Wait 3 seconds before collapsing
-            }
-          }}
-        >
-          <SidebarItem
-            icon={TableIcon}
-            label={(isSidebarCollapsed && !isMobileMenuOpen) ? "" : "กรอกคะแนน"}
-            active={activeTab.startsWith('grading')}
-            onClick={() => {
-              if (isSidebarCollapsed && !isMobileMenuOpen) setIsSidebarCollapsed(false);
-              setIsGradingOpen(!isGradingOpen);
-            }}
-            hasSubmenu={!isSidebarCollapsed || isMobileMenuOpen}
-            isOpen={isGradingOpen}
-          />
-        </div>
-
-        <AnimatePresence>
-          {isGradingOpen && (!isSidebarCollapsed || isMobileMenuOpen) && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden flex flex-col gap-1"
-            >
-              {['1', '2', '3', '4', '5', '6'].map(grade => (
-                <SidebarSubItem
-                  key={grade}
-                  label={`ชั้นประถมศึกษาปีที่ ${grade}`}
-                  active={activeTab === `grading-${grade}`}
-                  onClick={() => {
-                    setActiveTab(`grading-${grade}`);
-                    setGradingGrade(grade);
-                    if (window.innerWidth < 1024) setIsMobileMenuOpen(false);
-                  }}
-                />
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        />
       </nav>
 
       {/* Footer Actions */}

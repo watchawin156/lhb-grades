@@ -27,7 +27,6 @@ interface GradingModalsProps {
   clearDataCode: string; setClearDataCode: (v: string) => void;
   setStudents: React.Dispatch<React.SetStateAction<Student[]>>;
   setScores: React.Dispatch<React.SetStateAction<ScoreRecord[]>>;
-  isStandardSubjectModalOpen: boolean; setIsStandardSubjectModalOpen: (v: boolean) => void;
   isAdminMode: boolean; isEditingTemplate: boolean; setIsEditingTemplate: (v: boolean) => void;
   subjects: Subject[]; setSubjects: React.Dispatch<React.SetStateAction<Subject[]>>;
   scores: ScoreRecord[];
@@ -47,7 +46,7 @@ export default function GradingModals(props: GradingModalsProps) {
     gradingGrade, students, isGeneratingPDF, generatePDF,
     isClearDataModalOpen, setIsClearDataModalOpen, clearDataCode, setClearDataCode,
     setStudents, setScores,
-    isStandardSubjectModalOpen, setIsStandardSubjectModalOpen, isAdminMode,
+    isAdminMode,
     isEditingTemplate, setIsEditingTemplate, subjects, setSubjects, scores,
     loadStandardSubjects, standardSubjectsTemplate, setStandardSubjectsTemplate,
   } = props;
@@ -452,15 +451,6 @@ export default function GradingModals(props: GradingModalsProps) {
           </div>
         )}
       </AnimatePresence>
-
-      <StandardSubjectModal
-        isStandardSubjectModalOpen={isStandardSubjectModalOpen} setIsStandardSubjectModalOpen={setIsStandardSubjectModalOpen}
-        isAdminMode={isAdminMode} isEditingTemplate={isEditingTemplate} setIsEditingTemplate={setIsEditingTemplate}
-        subjects={subjects} setSubjects={setSubjects} scores={scores} setScores={setScores}
-        loadStandardSubjects={loadStandardSubjects} gradingGrade={gradingGrade}
-        standardSubjectsTemplate={standardSubjectsTemplate} setStandardSubjectsTemplate={setStandardSubjectsTemplate}
-        setShowAdminLogin={setShowAdminLogin}
-      />
 
     </>
   );
