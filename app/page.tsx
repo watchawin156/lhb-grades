@@ -116,17 +116,24 @@ export default function App() {
 
     // Check completion for each room
     return roomList.map(room => {
-      const roomSubjects = allData.filter(d => d.type === 'subject' && d.class_level === room.class_level && d.year === Number(selectedYear));
-      
       let isComplete = false;
-      if (roomSubjects.length > 0 && room.studentCodes.length > 0) {
-        isComplete = roomSubjects.every(subj => {
-          return room.studentCodes.every((stCode: string) => {
-            const hasSem1 = allData.some(d => d.type === 'score' && d.student_code === stCode && d.subject_code === subj.subject_code && d.semester === 1 && d.year === Number(selectedYear));
-            const hasSem2 = allData.some(d => d.type === 'score' && d.student_code === stCode && d.subject_code === subj.subject_code && d.semester === 2 && d.year === Number(selectedYear));
-            return hasSem1 && hasSem2;
+      if (room.studentCodes.length > 0) {
+        // วิชาของห้องนี้ คือวิชาที่มี year ตรงกับปีที่เลือก หรือเป็นวิชามาตรฐาน (year is null/0)
+        const roomSubjects = allData.filter(d => 
+          d.type === 'subject' && 
+          d.class_level === room.class_level && 
+          (d.year === Number(selectedYear) || !d.year)
+        );
+
+        if (roomSubjects.length > 0) {
+          isComplete = roomSubjects.every(subj => {
+            return room.studentCodes.every((stCode: string) => {
+              const hasSem1 = allData.some(d => d.type === 'score' && d.student_code === stCode && d.subject_code === subj.subject_code && d.semester === 1 && d.year === Number(selectedYear));
+              const hasSem2 = allData.some(d => d.type === 'score' && d.student_code === stCode && d.subject_code === subj.subject_code && d.semester === 2 && d.year === Number(selectedYear));
+              return hasSem1 && hasSem2;
+            });
           });
-        });
+        }
       }
 
       return { ...room, isComplete };
@@ -136,12 +143,15 @@ export default function App() {
   const subjects = useMemo(() => {
     if (!selectedRoom) return [];
     const subjectsMap = new Map();
-    allData.filter(d => d.type === 'subject' && d.class_level === selectedRoom.class_level && d.year === Number(selectedYear))
-      .forEach(subject => {
-        if (!subjectsMap.has(subject.subject_code)) {
-          subjectsMap.set(subject.subject_code, subject);
-        }
-      });
+    allData.filter(d => 
+      d.type === 'subject' && 
+      d.class_level === selectedRoom.class_level && 
+      (d.year === Number(selectedYear) || !d.year)
+    ).forEach(subject => {
+      if (!subjectsMap.has(subject.subject_code)) {
+        subjectsMap.set(subject.subject_code, subject);
+      }
+    });
     return Array.from(subjectsMap.values());
   }, [allData, selectedRoom, selectedYear]);
 
@@ -169,15 +179,22 @@ export default function App() {
 
   const adminSubjects = useMemo(() => {
     const subjectsMap = new Map();
-    allData.filter(d => d.type === 'subject' && d.class_level === adminSelectedRoom && d.year === Number(selectedYear))
-      .forEach(subject => subjectsMap.set(subject.subject_code, subject));
+    allData.filter(d => 
+      d.type === 'subject' && 
+      d.class_level === adminSelectedRoom && 
+      (d.year === Number(selectedYear) || !d.year)
+    ).forEach(subject => subjectsMap.set(subject.subject_code, subject));
     return Array.from(subjectsMap.values());
   }, [allData, adminSelectedRoom, selectedYear]);
 
   // ============ ACTIONS ============
   const handleSelectRoom = (room: any) => {
     setSelectedRoom(room);
-    const roomSubjects = allData.filter(d => d.type === 'subject' && d.class_level === room.class_level && d.year === Number(selectedYear));
+    const roomSubjects = allData.filter(d => 
+      d.type === 'subject' && 
+      d.class_level === room.class_level && 
+      (d.year === Number(selectedYear) || !d.year)
+    );
     if (roomSubjects.length > 0) {
       setSelectedSubject(roomSubjects[0]);
     } else {
