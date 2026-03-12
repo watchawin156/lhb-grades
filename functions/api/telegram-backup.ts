@@ -1,4 +1,4 @@
-export const onRequest: PagesFunction = async (context) => {
+export const onRequest = async (context: any) => {
     const { request } = context;
     const BOT_TOKEN = '8505492579:AAHWRjIcdINKMetnp1bKcXt0xecVSoChSr8';
     const CHAT_ID = '-1003201809285';

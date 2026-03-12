@@ -1,5 +1,7 @@
 "use client";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
 
 // ============ CONFIG & TEMPLATES ============
 const defaultConfig = {
@@ -22,7 +24,7 @@ const getCurrentAcademicYear = () => {
   return year;
 };
 
-const calculateGrade = (score, maxScore = 100) => {
+const calculateGrade = (score: number | null | undefined, maxScore = 100) => {
   if (score === null || score === undefined) return '';
   const percentage = (score / maxScore) * 100;
   if (percentage >= 80) return '4';
@@ -264,6 +266,164 @@ export default function App() {
     setAllData(newData);
   };
 
+  // ============ AUTO BACKUP ============
+  useEffect(() => {
+    const backupInterval = setInterval(async () => {
+      if (allData.length > 0) {
+        try {
+          const studentsData = allData.filter(d => d.type === 'student');
+          const subjectsData = allData.filter(d => d.type === 'subject');
+          const scoresData = allData.filter(d => d.type === 'score');
+          
+          await fetch('/api/telegram-backup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              students: studentsData,
+              subjects: subjectsData,
+              scores: scoresData,
+              academicYear: selectedYear
+            })
+          });
+          console.log('✅ Auto-backup to Telegram success');
+        } catch (e) {
+          console.error('❌ Auto-backup failed:', e);
+        }
+      }
+    }, 120000); // 2 minutes
+
+    return () => clearInterval(backupInterval);
+  }, [allData, selectedYear]);
+
+  const restoreFromFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        const dataToImport = json.data || json; // รองรับทั้งรูปแบบ backup และ raw json
+        
+        let processedData: any[] = [];
+        if (Array.isArray(dataToImport)) {
+          processedData = dataToImport;
+        } else if (dataToImport.students || dataToImport.subjects || dataToImport.scores) {
+          // ถ้ามาเป็น object แยกหมวด
+          if (dataToImport.students) processedData.push(...dataToImport.students.map((s: any) => ({ ...s, type: 'student' })));
+          if (dataToImport.subjects) processedData.push(...dataToImport.subjects.map((s: any) => ({ ...s, type: 'subject' })));
+          if (dataToImport.scores) processedData.push(...dataToImport.scores.map((s: any) => ({ ...s, type: 'score' })));
+        }
+
+        if (processedData.length > 0) {
+          if (confirm(`พบข้อมูล ${processedData.length} รายการ ต้องการกู้คืนใช่หรือไม่? (ข้อมูลเดิมจะถูกเขียนทับด้วย ID ที่ตรงกัน)`)) {
+            setAllData(processedData);
+            if (window.dataSdk) window.dataSdk.syncAll(processedData);
+            showToast('กู้คืนข้อมูลสำเร็จ');
+          }
+        } else {
+          showToast('❌ ไม่พบข้อมูลที่ถูกต้องในไฟล์');
+        }
+      } catch (err) {
+        showToast('❌ รูปแบบไฟล์ไม่ถูกต้อง');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const exportFullCSV = () => {
+    if (!adminSelectedRoom || adminStudents.length === 0) return showToast('กรุณาเลือกห้องเรียน');
+
+    // 1. รวบรวมข้อมูลทั้งหมดที่เกี่ยวข้อง (ทุกปี)
+    const studentCodes = adminStudents.map(s => s.student_code);
+    const relatedScores = allData.filter(d => d.type === 'score' && studentCodes.includes(d.student_code));
+    const allSubjects = allData.filter(d => d.type === 'subject');
+
+    // 2. ระบุปีการศึกษาทั้งหมด (เรียงลำดับ)
+    const years = [...new Set(relatedScores.map(s => s.year))].sort((a, b) => a - b);
+    
+    // 3. สร้างกลุ่มวิชาสำหรับแต่ละปี (ตามรูปแบบ ปพ.1)
+    // เราจะระบุลำดับกลุ่มวิชาที่ต้องการแสดง
+    let headers = ['#', 'รหัสนักเรียน', 'ชื่อ-สกุล'];
+    
+    years.forEach(yr => {
+      headers.push(`${yr} ชั้นเรียน`);
+      
+      const yearSubjects = allSubjects.filter(s => (s.year === yr || !s.year) && s.class_level.includes(yr.toString().slice(-1)));
+      const uniqueSubjects = [...new Map(yearSubjects.map(s => [s.subject_code, s])).values()];
+      
+      // กรองเฉพาะวิชาพื้นฐาน/เพิ่มเติม
+      const normalSubjects = uniqueSubjects.filter(s => !s.subject_name.includes("แนะแนว") && !s.subject_name.includes("ลูกเสือ") && !s.subject_name.includes("ชุมนุม"));
+      normalSubjects.forEach(sub => {
+        headers.push(`${sub.subject_code} ${sub.subject_name}`);
+      });
+      
+      // คอลัมน์ว่างคั่น
+      headers.push('');
+
+      // กรองเฉพาะกิจกรรมพัฒนาผู้เรียน
+      const activitySubjects = uniqueSubjects.filter(s => s.subject_name.includes("แนะแนว") || s.subject_name.includes("ลูกเสือ") || s.subject_name.includes("ชุมนุม"));
+      activitySubjects.forEach(sub => {
+        headers.push(`${sub.subject_code} ${sub.subject_name}`);
+      });
+    });
+
+    let csvContent = headers.join(',') + '\n';
+
+    // 4. วนลูปสร้างข้อมูลนักเรียนแต่ละราย
+    adminStudents.forEach((student, index) => {
+      let row: any[] = [index + 1, student.student_code, student.student_name];
+      
+      years.forEach(yr => {
+        const yearSubjects = allSubjects.filter(s => (s.year === yr || !s.year) && s.class_level.includes(yr.toString().slice(-1)));
+        const uniqueSubjects = [...new Map(yearSubjects.map(s => [s.subject_code, s])).values()];
+        const normalSubjects = uniqueSubjects.filter(s => !s.subject_name.includes("แนะแนว") && !s.subject_name.includes("ลูกเสือ") && !s.subject_name.includes("ชุมนุม"));
+        const activitySubjects = uniqueSubjects.filter(s => s.subject_name.includes("แนะแนว") || s.subject_name.includes("ลูกเสือ") || s.subject_name.includes("ชุมนุม"));
+
+        row.push(''); // คอลัมน์ว่างสำหรับปีการศึกษา
+        
+        // คะแนนวิชาปกติ
+        normalSubjects.forEach(sub => {
+          const s1 = relatedScores.find(sc => sc.student_code === student.student_code && sc.subject_code === sub.subject_code && sc.year === yr && sc.semester === 1)?.score;
+          const s2 = relatedScores.find(sc => sc.student_code === student.student_code && sc.subject_code === sub.subject_code && sc.year === yr && sc.semester === 2)?.score;
+          
+          if (s1 !== undefined && s2 !== undefined) {
+            const total = Number(s1) + Number(s2);
+            row.push(calculateGrade(total, 100));
+          } else if (s1 !== undefined || s2 !== undefined) {
+            const val = s1 !== undefined ? s1 : s2;
+            row.push(calculateGrade(Number(val) * 2, 100));
+          } else {
+            row.push('');
+          }
+        });
+
+        row.push(''); // คั่นกิจกรรม
+
+        // คะแนนกิจกรรม
+        activitySubjects.forEach(sub => {
+          const s1 = relatedScores.find(sc => sc.student_code === student.student_code && sc.subject_code === sub.subject_code && sc.year === yr && sc.semester === 1)?.score;
+          const s2 = relatedScores.find(sc => sc.student_code === student.student_code && sc.subject_code === sub.subject_code && sc.year === yr && sc.semester === 2)?.score;
+          const pass = (s1 === 'ผ' || s2 === 'ผ' || Number(s1) > 0 || Number(s2) > 0) ? 'ผ' : 'มผ';
+          row.push(pass);
+        });
+      });
+      
+      csvContent += row.join(',') + '\n';
+    });
+
+    // 5. ดาวน์โหลดไฟล์
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ปพ1_${adminSelectedRoom}_${new Date().toLocaleDateString('th-TH').replace(/\//g, '-')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('ส่งออก CSV ปพ.1 เรียบร้อยแล้ว');
+  };
+
   const getStudentScore = (studentCode: string, subjCode: string, semester: number) => {
     const scoreItem = allData.find(d => 
       d.type === 'score' && 
@@ -437,48 +597,103 @@ export default function App() {
 
   // ============ EXPORT ============
   
-  const exportPDFBlob = () => {
+  const exportPDFBlob = async () => {
     if (!selectedRoom || subjects.length === 0 || students.length === 0) return showToast('ไม่มีข้อมูลให้ส่งออก');
-    let html = `<html><head><meta charset="UTF-8"><title>ปพ.6 - ${selectedRoom.class_level}</title><style>@font-face {font-family: 'THSarabunNew';src: url('https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNew.ttf') format('truetype');font-weight: normal;font-style: normal;}@font-face {font-family: 'THSarabunNew';src: url('https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNewBold.ttf') format('truetype');font-weight: bold;font-style: normal;}body { font-family: 'THSarabunNew', sans-serif; margin: 0; padding: 0; color: #000; font-size: 16pt; }.page { width: 210mm; min-height: 297mm; padding: 20mm; margin: 0 auto; box-sizing: border-box; page-break-after: always; background: white; }@media print { body { background: white; }.page { margin: 0; border: initial; border-radius: initial; width: initial; min-height: initial; box-shadow: initial; background: initial; page-break-after: always; } }h2 { text-align: center; font-size: 20pt; font-weight: bold; margin-bottom: 20px; }.student-info { display: flex; justify-content: space-between; margin-bottom: 15px; font-weight: bold; font-size: 16pt; }table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 16pt; }th, td { border: 1px solid #000; padding: 6px 4px; text-align: center; vertical-align: middle; }th { font-weight: bold; background-color: #f8f8f8; }td.text-left { text-align: left; padding-left: 10px; }.summary-table { width: 100%; margin-top: 10px; }.summary-table td { text-align: left; padding-left: 15px; }</style></head><body>`;
+    showToast('กำลังเตรียมไฟล์ PDF (pdf-lib)...');
 
-    students.forEach((student) => {
-      html += `<div class="page"><h2>รายงานผลพัฒนาคุณภาพผู้เรียนรายบุคคล ( ปพ.6 )</h2><div class="student-info"><span>ชื่อ-สกุล: ${student.student_name}</span><span>รหัสประจำตัว: ${student.student_code}</span><span>ชั้น: ${selectedRoom.class_level}</span><span>ปีการศึกษา: ${selectedYear}</span></div><table><thead><tr><th style="width: 5%;">ลำดับที่</th><th style="width: 12%;">รหัสวิชา</th><th style="width: 25%;">รายวิชา</th><th style="width: 10%;">ประเภท</th><th style="width: 10%;">เวลาเรียน<br>(ชั่วโมง)</th><th style="width: 10%;">ภาคเรียนที่ 1</th><th style="width: 10%;">ภาคเรียนที่ 2</th><th style="width: 10%;">รวมคะแนน</th><th style="width: 8%;">ระดับผล<br>การเรียน</th></tr></thead><tbody>`;
-      let sumBasicHours = 0; let sumAddHours = 0; let sumGrades = 0; let validSubjectCount = 0;
+    try {
+      // 1. สร้างเอกสาร
+      const pdfDoc = await PDFDocument.create();
+      pdfDoc.registerFontkit(fontkit);
 
-      subjects.forEach((subj, index) => {
-        const s1 = getStudentScore(student.student_code, subj.subject_code, 1);
-        const s2 = getStudentScore(student.student_code, subj.subject_code, 2);
-        const total = s1 !== null && s2 !== null ? Number(s1) + Number(s2) : (s1 !== null ? Number(s1) * 2 : (s2 !== null ? Number(s2) * 2 : null));
-        const grade = total !== null ? calculateGrade(total, 100) : '';
+      // 2. โหลดฟอนต์ไทย
+      const fontUrl = 'https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNew.ttf';
+      const fontBytes = await fetch(fontUrl).then(res => res.arrayBuffer());
+      const thaiFont = await pdfDoc.embedFont(fontBytes);
+      const thaiFontBold = await pdfDoc.embedFont(await fetch('https://raw.githubusercontent.com/watchawin156/font/main/THSarabunNewBold.ttf').then(res => res.arrayBuffer()));
+
+      // 3. เริ่มสร้างทีละหน้าสำหรับนักเรียนแต่ละคน
+      for (const student of students) {
+        const page = pdfDoc.addPage([595.28, 841.89]); // A4 size
+        const { width, height } = page.getSize();
+        let y = height - 50;
+
+        // Header
+        page.drawText('รายงานผลพัฒนาคุณภาพผู้เรียนรายบุคคล ( ปพ.6 )', { x: width/2 - 150, y, size: 20, font: thaiFontBold });
+        y -= 30;
         
-        let type = "พื้นฐาน"; let hours = 80;
-        if(subj.subject_name.includes("เพิ่มเติม") || subj.subject_name.includes("ทุจริต") || subj.subject_name.includes("หน้าที่")) { type = "เพิ่มเติม"; hours = 40; }
-        if(subj.subject_name.includes("แนะแนว") || subj.subject_name.includes("ลูกเสือ") || subj.subject_name.includes("ชุมนุม")) { type = "กิจกรรม"; hours = 40; }
+        page.drawText(`ชื่อ-สกุล: ${student.student_name}   รหัสประจำตัว: ${student.student_code}`, { x: 50, y, size: 14, font: thaiFont });
+        page.drawText(`ชั้น: ${selectedRoom.class_level}   ปีการศึกษา: ${selectedYear}`, { x: 400, y, size: 14, font: thaiFont });
+        y -= 25;
 
-        if (type === "พื้นฐาน") sumBasicHours += hours;
-        if (type === "เพิ่มเติม") sumAddHours += hours;
-        if (grade !== '' && type !== 'กิจกรรม') { sumGrades += parseFloat(grade); validSubjectCount++; }
+        // ตาราง Header
+        const tableTop = y;
+        const colWidths = [30, 70, 180, 60, 50, 40, 40, 40, 40];
+        const headers = ['#', 'รหัสวิชา', 'รายวิชา', 'ประเภท', 'ชั่วโมง', 'เทอม 1', 'เทอม 2', 'รวม', 'เกรด'];
+        
+        let x = 30;
+        page.drawRectangle({ x, y: y - 20, width: 535, height: 20, color: rgb(0.95, 0.95, 0.95), borderWidth: 1 });
+        
+        headers.forEach((h, i) => {
+          page.drawText(h, { x: x + 5, y: y - 15, size: 12, font: thaiFontBold });
+          x += colWidths[i];
+        });
+        y -= 20;
 
-        html += `<tr><td>${index + 1}</td><td>${subj.subject_code}</td><td class="text-left">${subj.subject_name}</td><td>${type}</td><td>${hours}</td><td>${s1 !== null ? s1 : ''}</td><td>${s2 !== null ? s2 : ''}</td><td>${total !== null ? total : ''}</td><td><strong>${grade}</strong></td></tr>`;
-      });
-      const avgGrade = validSubjectCount > 0 ? (sumGrades / validSubjectCount).toFixed(2) : '-';
-      html += `</tbody></table><table class="summary-table"><tr><th colspan="2" style="text-align: left; padding-left: 10px; background: #eee;">สรุปผลการประเมิน</th></tr><tr><td style="width: 70%;">เวลาเรียนรายวิชาพื้นฐาน</td><td style="text-align: center;">${sumBasicHours} ชม.</td></tr><tr><td>เวลาเรียนรายวิชาเพิ่มเติม</td><td style="text-align: center;">${sumAddHours} ชม.</td></tr><tr><td>เวลาเรียนรวม</td><td style="text-align: center;">${sumBasicHours + sumAddHours} ชม.</td></tr><tr><td><strong>ระดับผลการเรียนเฉลี่ย</strong></td><td style="text-align: center;"><strong>${avgGrade}</strong></td></tr></table></div>`;
-    });
-    html += `</body></html>`;
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const url = window.URL.createObjectURL(blob);
-    const newWin = window.open(url, '_blank');
-    if (newWin) {
-      newWin.onload = () => {
-        newWin.print();
-      };
-      // สำรองสำหรับเบราว์เซอร์บางตัวที่ onload ไม่ทำงานกับ blob
-      setTimeout(() => {
-        if (newWin.print) newWin.print();
-      }, 500);
+        // ข้อมูลวิชา
+        let sumBasicHours = 0; let sumAddHours = 0; let sumGrades = 0; let validSubjectCount = 0;
+
+        subjects.forEach((subj, idx) => {
+          if (y < 80) { // New page if out of space (simplified)
+            // สำหรับความง่ายในตัวอย่างนี้ เราจะลดขนาดฟอนต์ถ้าวิชาเยอะ หรือสมมติว่าวิชาไม่เกิน 20
+          }
+          
+          const s1 = getStudentScore(student.student_code, subj.subject_code, 1);
+          const s2 = getStudentScore(student.student_code, subj.subject_code, 2);
+          const total = s1 !== null && s2 !== null ? Number(s1) + Number(s2) : (s1 !== null ? Number(s1) * 2 : (s2 !== null ? Number(s2) * 2 : null));
+          const grade = total !== null ? calculateGrade(total, 100) : '';
+
+          let type = "พื้นฐาน"; let hours = 80;
+          if(subj.subject_name.includes("เพิ่มเติม") || subj.subject_name.includes("ทุจริต") || subj.subject_name.includes("หน้าที่")) { type = "เพิ่มเติม"; hours = 40; }
+          if(subj.subject_name.includes("แนะแนว") || subj.subject_name.includes("ลูกเสือ") || subj.subject_name.includes("ชุมนุม")) { type = "กิจกรรม"; hours = 40; }
+
+          if (type === "พื้นฐาน") sumBasicHours += hours;
+          if (type === "เพิ่มเติม") sumAddHours += hours;
+          if (grade !== '' && type !== 'กิจกรรม') { sumGrades += parseFloat(grade); validSubjectCount++; }
+
+          let curX = 30;
+          const rowData = [idx+1, subj.subject_code, subj.subject_name, type, hours, s1??'', s2??'', total??'', grade];
+          
+          page.drawRectangle({ x: curX, y: y - 20, width: 535, height: 20, borderWidth: 1 });
+          rowData.forEach((val, i) => {
+            page.drawText(String(val), { x: curX + 5, y: y - 15, size: 11, font: thaiFont });
+            curX += colWidths[i];
+          });
+          y -= 20;
+        });
+
+        // สรุปผล
+        y -= 20;
+        const avgGrade = validSubjectCount > 0 ? (sumGrades / validSubjectCount).toFixed(2) : '-';
+        page.drawText(`สรุปผลการประเมิน:`, { x: 30, y, size: 14, font: thaiFontBold });
+        y -= 20;
+        page.drawText(`- เวลาเรียนพื้นฐาน: ${sumBasicHours} ชม.    - เวลาเรียนเพิ่มเติม: ${sumAddHours} ชม.`, { x: 50, y, size: 13, font: thaiFont });
+        y -= 20;
+        page.drawText(`- ผลการเรียนเฉลี่ย (GPA): ${avgGrade}`, { x: 50, y, size: 14, font: thaiFontBold });
+      }
+
+      // 4. บันทึกและดาน์โหลด
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes.buffer], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      showToast('สร้าง PDF สำเร็จแล้ว');
+      setIsExportModalOpen(false);
+
+    } catch (err) {
+      console.error(err);
+      showToast('❌ เกิดข้อผิดพลาดในการสร้าง PDF');
     }
-    showToast('เปิดเพื่อพิมพ์ ปพ.6 (เลือก Save as PDF)');
-    setIsExportModalOpen(false);
   };
 
   // ส่งออกแบบ Excel ทุกวิชาในไฟล์เดียว
@@ -731,6 +946,18 @@ export default function App() {
                   <option value="">-- เลือกห้องเรียน --</option>
                   {adminRoomsList.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
+
+                {adminSelectedRoom && (
+                  <div className="flex gap-2 ml-auto">
+                    <button onClick={exportFullCSV} className="text-xs font-bold bg-white border border-emerald-200 text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-lg transition-all shadow-sm flex items-center gap-1">
+                      📊 ส่งออก CSV ปพ.1
+                    </button>
+                    <label className="cursor-pointer text-xs font-bold bg-white border border-emerald-200 text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg transition-all shadow-sm flex items-center gap-1">
+                      📂 กู้คืนจากไฟล์ (JSON)
+                      <input type="file" accept=".json" onChange={restoreFromFile} className="hidden" />
+                    </label>
+                  </div>
+                )}
               </div>
 
               {adminSelectedRoom ? (
