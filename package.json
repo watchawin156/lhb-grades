@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "clean": "next clean",
-    "deploy-all": "npm run build && git add . && git commit -m 'deploy' && git push origin master && npx wrangler pages deploy out --project-name lhb-grades --branch master --commit-dirty=true"
+    "deploy-all": "npm run build && git add . && git commit -m 'deploy' && git push origin master && npx wrangler pages deploy out --project-name lhb-grades --branch master --commit-dirty=true",
+    "build+deploy": "npm run build && git add . && git commit -m 'deploy' && git push origin master && npx wrangler pages deploy out --project-name lhb-grades --branch master --commit-dirty=true"
   },
   "dependencies": {
     "@google/genai": "^1.17.0",
