@@ -15,7 +15,6 @@ export const onRequest: PagesFunction<{ DB: D1Database; STUDENTS_DB: D1Database 
 
             let studentsQuery = "SELECT * FROM students";
             const params: any[] = [];
-
             if (filterGrade || filterYear) {
                 studentsQuery += " WHERE ";
                 const conditions = [];
@@ -30,20 +29,12 @@ export const onRequest: PagesFunction<{ DB: D1Database; STUDENTS_DB: D1Database 
                 studentsQuery += conditions.join(" AND ");
             }
 
+            // Subjects Query: ดึงวิชาที่เป็น Template ของชั้นนั้น (year IS NULL)
             let subjectsQuery = "SELECT * FROM subjects";
             const subParams: any[] = [];
-            if (filterGrade || filterYear) {
-                subjectsQuery += " WHERE ";
-                const subConditions = [];
-                if (filterGrade) {
-                    subConditions.push("class_level = ?");
-                    subParams.push(filterGrade);
-                }
-                if (filterYear) {
-                    subConditions.push("year = ?");
-                    subParams.push(Number(filterYear));
-                }
-                subjectsQuery += subConditions.join(" AND ");
+            if (filterGrade) {
+                subjectsQuery += " WHERE class_level = ? AND (year = ? OR year IS NULL)";
+                subParams.push(filterGrade, Number(filterYear) || 0);
             }
 
             const [stdRes, subRes, scoRes] = await Promise.all([
