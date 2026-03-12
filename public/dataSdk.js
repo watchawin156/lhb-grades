@@ -143,7 +143,7 @@ window.dataSdk = {
     const idx = this.cachedData.findIndex(d => 
       d.type === item.type && 
       (item.type === 'score' ? 
-        (d.student_code === item.student_code && d.subject_code === item.subject_code && d.semester === item.semester) : 
+        (d.student_code === item.student_code && d.subject_code === item.subject_code && d.semester === item.semester && d.year === item.year) : 
         (d.student_code === item.student_code || d.subject_code === item.subject_code)
       )
     );
