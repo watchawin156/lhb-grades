@@ -57,26 +57,26 @@ window.dataSdk = {
             // หากวิชามี class_level ระบุมา (จาก D1) ให้ใช้ค่านั้นเลย
             if (s.class_level) {
               flattened.push({
+                ...s,
                 type: 'subject',
                 subject_code: s.code,
                 subject_name: s.name,
                 class_level: s.class_level,
                 max_score: s.maxScore || 100,
-                year: Number(s.year) || 0, // 0 means template
-                ...s
+                year: (s.year === null || s.year === undefined) ? 0 : Number(s.year)
               });
             } else {
               // กรณีวิชาเก่าที่ไม่มี class_level ให้แมปกับทุกชั้น (Fallback)
               const uniqueClasses = [...new Set(cloudData.students.map(st => st.class))];
               uniqueClasses.forEach(cls => {
                 flattened.push({
+                  ...s,
                   type: 'subject',
                   subject_code: s.code,
                   subject_name: s.name,
                   class_level: cls,
                   max_score: s.maxScore || 100,
-                  year: Number(s.year) || 0,
-                  ...s
+                  year: (s.year === null || s.year === undefined) ? 0 : Number(s.year)
                 });
               });
             }
