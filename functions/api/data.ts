@@ -115,9 +115,9 @@ export const onRequest: PagesFunction<{ DB: D1Database; STUDENTS_DB: D1Database 
             });
 
             // 2. Subjects -> lhb-grades-db (DB)
-            gradeQueries.push(db.prepare("DELETE FROM subjects"));
+            // ใช้ INSERT OR REPLACE แทน DELETE ทั้งหมด เพื่อป้องกันวิชา Template หายจากฐานข้อมูล
             subjects.forEach((s: any) => {
-                gradeQueries.push(db.prepare("INSERT INTO subjects (id, code, name, maxScore, semester, type, credit, class_level, year) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                gradeQueries.push(db.prepare("INSERT OR REPLACE INTO subjects (id, code, name, maxScore, semester, type, credit, class_level, year) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
                     .bind(s.id, s.code, s.name, s.maxScore, s.semester, s.type || 'พื้นฐาน', s.credit || 1, s.class_level, s.year));
             });
 
