@@ -85,7 +85,10 @@ export const onRequest: PagesFunction<{ DB: D1Database; STUDENTS_DB: D1Database 
 
             return Response.json({
                 students,
-                subjects: subRes.results,
+                subjects: (subRes.results as any[]).map(s => ({
+                    ...s,
+                    year: s.year || Number(filterYear) || 2568 // Fallback to selected year if it's a template
+                })),
                 scores: Object.values(scoreMap)
             });
         } catch (error: any) {
