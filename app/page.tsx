@@ -265,8 +265,14 @@ export default function App() {
   };
 
   const getStudentScore = (studentCode: string, subjCode: string, semester: number) => {
-// ... (lines 225-231 unchanged) ...
-// ... (lines 232 unchanged) ...
+    const scoreItem = allData.find(d => 
+      d.type === 'score' && 
+      d.student_code === studentCode && 
+      d.subject_code === subjCode && 
+      d.year === Number(selectedYear) && 
+      d.semester === semester
+    );
+    return scoreItem ? scoreItem.score : null;
   };
 
   // ============ LONG PRESS STATUS ACTIONS ============
@@ -461,8 +467,17 @@ export default function App() {
     html += `</body></html>`;
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = window.URL.createObjectURL(blob);
-    window.open(url, '_blank');
-    showToast('เปิดเอกสาร ปพ.6 ในแท็บใหม่แล้ว');
+    const newWin = window.open(url, '_blank');
+    if (newWin) {
+      newWin.onload = () => {
+        newWin.print();
+      };
+      // สำรองสำหรับเบราว์เซอร์บางตัวที่ onload ไม่ทำงานกับ blob
+      setTimeout(() => {
+        if (newWin.print) newWin.print();
+      }, 500);
+    }
+    showToast('เปิดเพื่อพิมพ์ ปพ.6 (เลือก Save as PDF)');
     setIsExportModalOpen(false);
   };
 

@@ -52,17 +52,17 @@ window.dataSdk = {
         // 2. Subjects
         if (cloudData.subjects) {
           cloudData.subjects.forEach(s => {
-            this.idMap.subjects[s.code] = s.id;
+            this.idMap.subjects[s.subject_code] = s.id;
             
             // หากวิชามี class_level ระบุมา (จาก D1) ให้ใช้ค่านั้นเลย
             if (s.class_level) {
               flattened.push({
                 ...s,
                 type: 'subject',
-                subject_code: s.code,
-                subject_name: s.name,
+                subject_code: s.subject_code,
+                subject_name: s.subject_name || s.name,
                 class_level: s.class_level,
-                max_score: s.maxScore || 100,
+                max_score: s.max_score || 100,
                 year: (s.year === null || s.year === undefined) ? 0 : Number(s.year)
               });
             } else {
@@ -72,10 +72,10 @@ window.dataSdk = {
                 flattened.push({
                   ...s,
                   type: 'subject',
-                  subject_code: s.code,
-                  subject_name: s.name,
+                  subject_code: s.subject_code,
+                  subject_name: s.subject_name || s.name,
                   class_level: cls,
-                  max_score: s.maxScore || 100,
+                  max_score: s.max_score || 100,
                   year: (s.year === null || s.year === undefined) ? 0 : Number(s.year)
                 });
               });
@@ -87,7 +87,7 @@ window.dataSdk = {
         if (cloudData.scores) {
           cloudData.scores.forEach(s => {
             const studentCode = cloudData.students.find(st => st.id === s.studentId)?.code;
-            const subjectCode = cloudData.subjects.find(sub => sub.id === s.subjectId)?.code;
+            const subjectCode = cloudData.subjects.find(sub => sub.id === s.subjectId)?.subject_code;
             const studentClass = cloudData.students.find(st => st.id === s.studentId)?.class;
 
             if (studentCode && subjectCode) {
