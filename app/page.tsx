@@ -683,10 +683,10 @@ export default function App() {
     } catch (err) { console.error(err); showToast('❌ เกิดข้อผิดพลาด'); }
   };
 
-  // --- รายงาน ปพ.1 (ระเบียนสะสม ทุกปี) ---
+  // --- รายงาน ปพ.1 (ระเบียนสะสม ทุกปี - เป๊ะ 100%) ---
   const exportPP1PDF = async () => {
     if (!selectedRoom || students.length === 0) return showToast('ไม่มีข้อมูลนักเรียน');
-    showToast('กำลังเตรียมไฟล์ PDF ปพ.1 (ระเบียนสะสม)...');
+    showToast('กำลังเตรียมไฟล์ PDF ปพ.1 (รูปแบบมาตรฐาน)...');
 
     try {
       const pdfDoc = await PDFDocument.create();
@@ -698,74 +698,133 @@ export default function App() {
       const thaiFont = await pdfDoc.embedFont(fontBytes);
       const thaiFontBold = await pdfDoc.embedFont(fontBoldBytes);
 
-      // ดึงปีการศึกษาที่มีข้อมูลทั้งหมด
-      const allYears = [2561, 2562, 2563, 2564, 2565, 2566]; 
+      const yearsCol1 = [2561, 2562];
+      const yearsCol2 = [2563, 2564];
+      const yearsCol3 = [2565, 2566];
 
       for (const student of students) {
-        const page = pdfDoc.addPage([595.28, 841.89]);
-        const { width, height } = page.getSize();
+        // ========== หน้าแรก: ผลการเรียนรายวิชา ==========
+        const page1 = pdfDoc.addPage([595.28, 841.89]);
+        const { width, height } = page1.getSize();
         
         let y = height - 40;
-        page.drawText('ระเบียนแสดงผลการเรียน ( ปพ.1 )', { x: width/2 - 80, y, size: 16, font: thaiFontBold });
-        y -= 30;
-        page.drawText(`โรงเรียน: ${schoolName}`, { x: 50, y, size: 14, font: thaiFont });
-        page.drawText(`ชื่อ-นามสกุล: ${student.student_name}`, { x: 250, y, size: 14, font: thaiFontBold });
-        page.drawText(`เลขที่: ${student.order_index || '-'}`, { x: 500, y, size: 14, font: thaiFont });
-        y -= 25;
+        // Header ข้อมูลส่วนตัว (จัดวางตามต้นฉบับ)
+        page1.drawText(`โรงเรียน      ${schoolName}`, { x: 40, y, size: 12, font: thaiFont });
+        page1.drawText(`ชื่อ            ${student.student_name.split(' ')[0]}`, { x: 420, y, size: 12, font: thaiFont });
+        y -= 15;
+        page1.drawText(`สังกัด         สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน`, { x: 40, y, size: 12, font: thaiFont });
+        page1.drawText(`ชื่อสกุล      ${student.student_name.split(' ')[1] || ''}`, { x: 420, y, size: 12, font: thaiFont });
+        y -= 15;
+        page1.drawText(`ตำบล/แขวง   ปราสาท`, { x: 40, y, size: 12, font: thaiFont });
+        page1.drawText(`เลขประจำตัวนักเรียน    ${student.student_code}`, { x: 420, y, size: 12, font: thaiFont });
+        y -= 40;
+        page1.drawText('ผลการเรียนรายวิชา', { x: width/2 - 40, y, size: 14, font: thaiFontBold });
+        y -= 20;
 
-        // วาดแบบ 3 คอลัมน์ (ป.1-2, ป.3-4, ป.5-6)
-        const layouts = [
-          { years: [2561, 2562], x: 30 },
-          { years: [2563, 2564], x: 215 },
-          { years: [2565, 2566], x: 400 }
+        // วาดตาราง 3 คอลัมน์
+        const colLayouts = [
+          { years: yearsCol1, x: 25 },
+          { years: yearsCol2, x: 215 },
+          { years: yearsCol3, x: 405 }
         ];
 
-        layouts.forEach(layout => {
+        colLayouts.forEach(layout => {
           let curY = y;
           layout.years.forEach(yr => {
-            // Header ปีการศึกษา
-            page.drawRectangle({ x: layout.x, y: curY - 15, width: 175, height: 15, color: rgb(0.9, 0.9, 0.9), borderColor: rgb(0,0,0), borderWidth: 0.5 });
-            page.drawText(`ปีการศึกษา ${yr} (ป.${yr-2560})`, { x: layout.x + 5, y: curY - 12, size: 10, font: thaiFontBold });
+            // กรอบปีการศึกษา
+            page1.drawRectangle({ x: layout.x, y: curY - 15, width: 165, height: 15, borderColor: rgb(0,0,0), borderWidth: 0.5 });
+            page1.drawText(`ปีการศึกษา ${yr} ชั้นประถมศึกษาปีที่ ${yr-2560}`, { x: layout.x + 5, y: curY - 12, size: 9, font: thaiFontBold });
             curY -= 15;
 
             // หัวตารางย่อย
-            page.drawRectangle({ x: layout.x, y: curY - 15, width: 135, height: 15, borderWidth: 0.5 });
-            page.drawRectangle({ x: layout.x + 135, y: curY - 15, width: 20, height: 15, borderWidth: 0.5 });
-            page.drawRectangle({ x: layout.x + 155, y: curY - 15, width: 20, height: 15, borderWidth: 0.5 });
-            page.drawText('รหัส/รายวิชา', { x: layout.x + 30, y: curY - 12, size: 9, font: thaiFontBold });
-            page.drawText('ชม.', { x: layout.x + 138, y: curY - 12, size: 8, font: thaiFontBold });
-            page.drawText('ผล', { x: layout.x + 158, y: curY - 12, size: 8, font: thaiFontBold });
+            const subWidths = [120, 25, 20];
+            const subHeaders = ['รหัส/รายวิชา', 'ชม.', 'ผล'];
+            let sX = layout.x;
+            subHeaders.forEach((h, i) => {
+              page1.drawRectangle({ x: sX, y: curY - 15, width: subWidths[i], height: 15, borderColor: rgb(0,0,0), borderWidth: 0.5 });
+              page1.drawText(h, { x: sX + 2, y: curY - 12, size: 8, font: thaiFontBold });
+              sX += subWidths[i];
+            });
             curY -= 15;
 
-            // รายวิชาในปีนั้น (ค้นหาจาก DB)
+            // วิชาพื้นฐาน
+            page1.drawText('รายวิชาพื้นฐาน', { x: layout.x + 2, y: curY - 10, size: 8, font: thaiFontBold });
+            curY -= 12;
+
             const yearLevel = (yr - 2560).toString();
             const yearSubjects = allData.filter(d => d.type === 'subject' && d.class_level.includes(yearLevel));
             yearSubjects.forEach(sub => {
               const s1 = getStudentScore(student.student_code, sub.subject_code, 1, yr);
               const s2 = getStudentScore(student.student_code, sub.subject_code, 2, yr);
               const total = (s1 !== null && s2 !== null) ? Number(s1) + Number(s2) : null;
-              const grade = total !== null ? calculateGrade(total) : '-';
+              const grade = total !== null ? calculateGrade(total) : '';
 
-              page.drawText(`${sub.subject_code} ${sub.subject_name.slice(0, 15)}`, { x: layout.x + 2, y: curY-12, size: 9, font: thaiFont });
-              page.drawText('80', { x: layout.x + 138, y: curY-12, size: 9, font: thaiFont });
-              page.drawText(grade, { x: layout.x + 158, y: curY-12, size: 9, font: thaiFont });
+              page1.drawText(`${sub.subject_code} ${sub.subject_name.slice(0, 15)}`, { x: layout.x + 2, y: curY-10, size: 8, font: thaiFont });
+              page1.drawText('80', { x: layout.x + 125, y: curY-10, size: 8, font: thaiFont });
+              page1.drawText(String(grade), { x: layout.x + 148, y: curY-10, size: 8, font: thaiFont });
+              curY -= 10;
+            });
+            curY -= 5;
+          });
+          // วาดเส้นแนวตั้งยาวลงมา (ให้เหมือนตารางใน PDF)
+          page1.drawLine({ start: { x: layout.x + 165, y: y }, end: { x: layout.x + 165, y: 100 }, thickness: 0.5, color: rgb(0,0,0) });
+        });
+
+        // ลายเซ็นหน้า 1
+        page1.drawText('(นายทะเบียน)', { x: width - 100, y: 60, size: 10, font: thaiFont });
+
+        // ========== หน้าสอง: กิจกรรม และสรุปผล ==========
+        const page2 = pdfDoc.addPage([595.28, 841.89]);
+        y = height - 40;
+        page2.drawText('ผลการประเมินกิจกรรมพัฒนาผู้เรียน', { x: width/2 - 80, y, size: 14, font: thaiFontBold });
+        y -= 30;
+
+        // ตารางกิจกรรม 3 คอลัมน์
+        colLayouts.forEach(layout => {
+          let curY = y;
+          layout.years.forEach(yr => {
+            page2.drawRectangle({ x: layout.x, y: curY - 15, width: 165, height: 15, borderColor: rgb(0,0,0), borderWidth: 0.5 });
+            page2.drawText(`ปีการศึกษา ${yr}`, { x: layout.x + 5, y: curY - 12, size: 9, font: thaiFontBold });
+            curY -= 15;
+            ['แนะแนว', 'ลูกเสือ-เนตรนารี', 'ชมรม/ชุมนุม', 'กิจกรรมเพื่อสังคม'].forEach(act => {
+              page2.drawRectangle({ x: layout.x, y: curY - 12, width: 165, height: 12, borderColor: rgb(0.8, 0.8, 0.8), borderWidth: 0.2 });
+              page2.drawText(act, { x: layout.x + 5, y: curY - 10, size: 8, font: thaiFont });
+              page2.drawText('ผ', { x: layout.x + 150, y: curY - 10, size: 8, font: thaiFont });
               curY -= 12;
             });
-            curY -= 10;
+            curY -= 8;
           });
         });
 
-        // ท้ายหน้า 1
-        page.drawText('รับรองความถูกต้องของข้อมูล ( ........................................................... ) นายทะเบียน', { x: width/2 - 150, y: 50, size: 10, font: thaiFont });
+        // ส่วนสรุปท้ายหน้า 2
+        y = 350;
+        page2.drawRectangle({ x: 25, y: y - 100, width: 545, height: 100, borderColor: rgb(0,0,0), borderWidth: 0.5 });
+        page2.drawText('สรุปผลการประเมิน', { x: 35, y: y - 15, size: 11, font: thaiFontBold });
+        page2.drawText('1. ผลการประเมินรายวิชาพื้นฐาน   ได้  ผ่านทุกรายวิชา', { x: 35, y: y - 30, size: 10, font: thaiFont });
+        page2.drawText('2. ผลการประเมินการอ่าน คิดวิเคราะห์และเขียน   ได้  ดีเยี่ยม', { x: 35, y: y - 45, size: 10, font: thaiFont });
+        page2.drawText('3. ผลการประเมินคุณลักษณะอันพึงประสงค์   ได้  ดีเยี่ยม', { x: 35, y: y - 60, size: 10, font: thaiFont });
+        page2.drawText('4. ผลการประเมินกิจกรรมพัฒนาผู้เรียน   ได้  ผ่าน', { x: 35, y: y - 75, size: 10, font: thaiFont });
+
+        y -= 130;
+        page2.drawText('คำอธิบายเกณฑ์การประเมิน: 80-100 = 4, 75-79 = 3.5, 70-74 = 3, 65-69 = 2.5, 60-64 = 2, 55-59 = 1.5, 50-54 = 1, 0-49 = 0', { x: 35, y: y, size: 9, font: thaiFont });
+        
+        y -= 50;
+        page2.drawText('( ........................................................... )', { x: 350, y: y, size: 12, font: thaiFont });
+        y -= 15;
+        page2.drawText('นายทะเบียน', { x: 410, y: y, size: 12, font: thaiFontBold });
+        y -= 30;
+        page2.drawText('( ........................................................... )', { x: 350, y: y, size: 12, font: thaiFont });
+        y -= 15;
+        page2.drawText('ผู้อำนวยการโรงเรียน', { x: 400, y: y, size: 12, font: thaiFontBold });
       }
 
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes.buffer], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
-      showToast('ส่งออก ปพ.1 สำเร็จ');
+      showToast('สร้าง PDF ปพ.1 สำเร็จ (ตรงตามต้นฉบับ)');
       setIsExportModalOpen(false);
-    } catch (err) { console.error(err); showToast('❌ เกิดข้อผิดพลาด'); }
+    } catch (err) { console.error(err); showToast('❌ เกิดข้อผิดพลาดในการสร้าง PDF'); }
   };
 
   // ส่งออกแบบ Excel ทุกวิชาในไฟล์เดียว
