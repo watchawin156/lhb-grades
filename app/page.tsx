@@ -1420,53 +1420,24 @@ export default function App() {
                   🔓 ปลดล็อคการแก้ไขวิชานี้
                 </button>
                 
-                <h4 className="text-xs font-bold text-slate-400 mt-4 px-1 uppercase tracking-wider">แก้ไขข้อมูลพื้นฐาน</h4>
-                <div className="grid grid-cols-2 gap-2">
-                   <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 ml-1">รหัสวิชา</label>
-                      <input 
-                        type="text" 
-                        value={subjectAdminData?.subject_code || ''}
-                        onChange={(e) => setSubjectAdminData({...subjectAdminData, subject_code: e.target.value})}
-                        className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none font-mono"
-                      />
-                   </div>
-                   <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 ml-1">คะแนนเต็ม</label>
-                      <input 
-                        type="number" 
-                        value={subjectAdminData?.max_score || 100}
-                        onChange={(e) => setSubjectAdminData({...subjectAdminData, max_score: Number(e.target.value)})}
-                        className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none"
-                      />
-                   </div>
-                </div>
-                <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 ml-1">ชื่อวิชา</label>
-                    <input 
-                      type="text" 
-                      value={subjectAdminData?.subject_name || ''}
-                      onChange={(e) => setSubjectAdminData({...subjectAdminData, subject_name: e.target.value})}
-                      className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none"
-                    />
-                </div>
-                <button onClick={modifySubject} className="w-full py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-xl font-bold text-xs transition-all shadow-md">
-                   💾 บันทึกการเปลี่ยนแปลงข้อมูลวิชา
-                </button>
-
                 <h4 className="text-xs font-bold text-slate-400 mt-6 px-1 uppercase tracking-wider">ย้ายคะแนน (กรณีครูกรอกผิดวิชา)</h4>
                 <div className="bg-rose-50 p-3 rounded-xl border border-rose-100 space-y-2">
-                   <p className="text-[10px] text-rose-600 leading-tight">* ฟังก์ชันนี้จะย้ายคะแนน "ทั้งหมด" ของปีนี้ จากวิชานี้ไปยังรหัสวิชาที่ระบุ</p>
-                   <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        placeholder="รหัสใหม่ (เช่น ค11101)"
+                   <p className="text-[10px] text-rose-600 leading-tight">* ฟังก์ชันนี้จะย้ายคะแนน "ทั้งหมด" ของปีนี้ จากวิชานี้ไปยังรายวิชาอื่นในชั้นเดียวกัน</p>
+                   <div className="flex flex-col gap-2">
+                      <select 
                         value={moveTargetCode}
                         onChange={(e) => setMoveTargetCode(e.target.value)}
-                        className="flex-1 px-3 py-2 text-sm border-2 border-rose-200 rounded-lg outline-none font-mono focus:border-rose-500"
-                      />
-                      <button onClick={moveScoresToSubject} className="px-4 py-2 bg-rose-600 text-white rounded-lg font-bold text-xs hover:bg-rose-700 transition-all shadow-sm">
-                        🚀 ย้ายทันที
+                        className="w-full px-3 py-2 text-sm border-2 border-rose-200 rounded-lg outline-none bg-white focus:border-rose-500"
+                      >
+                        <option value="">-- เลือกวิชาปลายทาง --</option>
+                        {subjects.filter(s => s.subject_code !== subjectAdminData?.subject_code).map(s => (
+                          <option key={s.subject_code} value={s.subject_code}>
+                            {s.subject_code} - {s.subject_name}
+                          </option>
+                        ))}
+                      </select>
+                      <button onClick={moveScoresToSubject} className="w-full py-2 bg-rose-600 text-white rounded-lg font-bold text-xs hover:bg-rose-700 transition-all shadow-sm">
+                        🚀 ย้ายคะแนนทั้งหมดทันที
                       </button>
                    </div>
                 </div>
