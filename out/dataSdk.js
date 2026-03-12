@@ -53,20 +53,33 @@ window.dataSdk = {
         if (cloudData.subjects) {
           cloudData.subjects.forEach(s => {
             this.idMap.subjects[s.code] = s.id;
-            // The new UI uses subjects tied to class_level. 
-            // In the old DB, they are general. We'll map them to all relevant classes found in students.
-            const uniqueClasses = [...new Set(cloudData.students.map(st => st.class))];
-            uniqueClasses.forEach(cls => {
+            
+            // หากวิชามี class_level ระบุมา (จาก D1) ให้ใช้ค่านั้นเลย
+            if (s.class_level) {
               flattened.push({
                 type: 'subject',
                 subject_code: s.code,
                 subject_name: s.name,
-                class_level: cls,
+                class_level: s.class_level,
                 max_score: s.maxScore || 100,
-                year: 2568, // Default 
+                year: Number(s.year) || 0, // 0 means template
                 ...s
               });
-            });
+            } else {
+              // กรณีวิชาเก่าที่ไม่มี class_level ให้แมปกับทุกชั้น (Fallback)
+              const uniqueClasses = [...new Set(cloudData.students.map(st => st.class))];
+              uniqueClasses.forEach(cls => {
+                flattened.push({
+                  type: 'subject',
+                  subject_code: s.code,
+                  subject_name: s.name,
+                  class_level: cls,
+                  max_score: s.maxScore || 100,
+                  year: Number(s.year) || 0,
+                  ...s
+                });
+              });
+            }
           });
         }
 
