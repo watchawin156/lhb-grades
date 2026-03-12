@@ -377,6 +377,26 @@ export default function App() {
     setIsBulkEditSubjects(true);
   };
 
+  const loadTemplateFromD1 = () => {
+    if (!adminSelectedRoom) return;
+    
+    // กรองเอาเฉพาะวิชาที่เป็น Template (year เป็น 0 หรือ null) ของชั้นที่เลือก
+    const templates = allData.filter(d => 
+      d.type === 'subject' && 
+      d.class_level === adminSelectedRoom && 
+      (!d.year || d.year === 0)
+    );
+
+    if (templates.length === 0) {
+      showToast('❌ ไม่พบเทมเพลตวิชาสากลในฐานข้อมูล');
+      return;
+    }
+
+    const text = templates.map(s => `${s.subject_code}\t${s.subject_name}\t${s.max_score || 100}`).join('\n');
+    setBulkSubjectText(text);
+    showToast(`📥 โหลดเทมเพลต ${templates.length} วิชาเรียบร้อย`);
+  };
+
   const saveBulkSubjects = () => {
     if (!adminSelectedRoom) return;
     const lines = bulkSubjectText.split('\n').map(l => l.trim()).filter(l => l);
@@ -735,7 +755,15 @@ export default function App() {
                     <div className="flex-1 bg-white p-2 flex flex-col min-h-[400px] max-h-[400px]">
                       {isBulkEditSubjects ? (
                         <>
-                          <p className="text-xs text-emerald-600 mb-2 px-2 font-medium">รูปแบบ: รหัสวิชา (Tab) ชื่อวิชา (Tab) คะแนนเต็ม<br/>(สามารถก๊อปปี้จาก Excel มาวางได้เลย)</p>
+                          <div className="flex justify-between items-center mb-2 px-2">
+                             <p className="text-[10px] text-emerald-600 font-medium">รูปแบบ: รหัสวิชา (Tab) ชื่อวิชา (Tab) คะแนน</p>
+                             <button 
+                               onClick={loadTemplateFromD1}
+                               className="text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-2 py-1 rounded hover:bg-sky-100 transition-colors font-bold flex items-center gap-1"
+                             >
+                               📥 โหลดเทมเพลตจาก D1
+                             </button>
+                          </div>
                           <textarea 
                             value={bulkSubjectText}
                             onChange={(e) => setBulkSubjectText(e.target.value)}
