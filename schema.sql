@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS students (
     room TEXT,
     number TEXT,
     year INTEGER NOT NULL,
+    status TEXT DEFAULT 'ปกติ',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

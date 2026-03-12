@@ -43,7 +43,8 @@ window.dataSdk = {
               student_name: s.name,
               class_level: s.class,
               year: Number(s.year),
-              order_index: parseInt(s.number) || 0
+              order_index: parseInt(s.number) || 0,
+              status: s.status || 'ปกติ'
             });
           });
         }
@@ -157,7 +158,8 @@ window.dataSdk = {
           name: d.student_name,
           class: d.class_level,
           number: d.order_index?.toString(),
-          year: d.year
+          year: d.year,
+          status: d.status || 'ปกติ'
         });
       } else if (d.type === 'subject') {
         // Subjects are deduplicated by code

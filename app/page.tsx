@@ -68,6 +68,10 @@ export default function App() {
   const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
   const [reorderStudents, setReorderStudents] = useState<any[]>([]);
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  
+  // Student Status State
+  const [selectedStudentStatus, setSelectedStudentStatus] = useState<any>(null);
+  const longPressTimer = useRef<any>(null);
 
   // Config bindings
   const [appTitle, setAppTitle] = useState(defaultConfig.app_title);
@@ -244,13 +248,39 @@ export default function App() {
   };
 
   const getStudentScore = (studentCode: string, subjCode: string, semester: number) => {
-    const scoreDoc = allData.find(d => 
-      d.type === 'score' && d.student_code === studentCode &&
-      d.subject_code === subjCode &&
-      d.class_level === selectedRoom?.class_level &&
-      d.year === Number(selectedYear) && d.semester === semester
-    );
-    return scoreDoc ? scoreDoc.score : null;
+// ... (lines 225-231 unchanged) ...
+// ... (lines 232 unchanged) ...
+  };
+
+  // ============ LONG PRESS STATUS ACTIONS ============
+  const handleLongPressStart = (student: any) => {
+    longPressTimer.current = setTimeout(() => {
+      setSelectedStudentStatus(student);
+      const audio = new Audio('https://www.soundjay.com/buttons/sounds/button-20.mp3');
+      audio.volume = 0.2;
+      audio.play().catch(() => {}); // Play subtle feedback if allowed
+    }, 700); // 700ms for long press
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+  };
+
+  const updateStudentStatus = async (status: string) => {
+    if (!selectedStudentStatus) return;
+    
+    let newData = [...allData];
+    const idx = newData.findIndex(d => d.type === 'student' && d.student_code === selectedStudentStatus.student_code && d.year === Number(selectedYear));
+    
+    if (idx >= 0) {
+      newData[idx] = { ...newData[idx], status };
+      setAllData(newData);
+      if (window.dataSdk) window.dataSdk.update(newData[idx]);
+      showToast(`อัปเดตสถานะ ${selectedStudentStatus.student_name} เป็น ${status}`);
+    }
+    setSelectedStudentStatus(null);
   };
 
   const isSubjectComplete = (subjCode: string) => {
@@ -586,8 +616,18 @@ export default function App() {
                                 >
                                   {index + 1}
                                 </td>
-                                <td className="px-2 sm:px-4 py-3 text-xs sm:text-sm">
-                                  <div className="font-bold text-slate-700">{student.student_name}</div>
+                                <td className={`px-2 sm:px-4 py-3 text-xs sm:text-sm transition-all select-none cursor-help ${student.status === 'ย้ายออก' ? 'opacity-40 grayscale italic' : ''}`}
+                                  onMouseDown={() => handleLongPressStart(student)}
+                                  onMouseUp={handleLongPressEnd}
+                                  onMouseLeave={handleLongPressEnd}
+                                  onTouchStart={() => handleLongPressStart(student)}
+                                  onTouchEnd={handleLongPressEnd}
+                                >
+                                  <div className={`font-bold transition-colors ${student.status === 'ย้ายออก' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                                    {student.student_name}
+                                    {student.status === 'ซ้ำชั้น' && <span className="ml-2 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded border border-amber-200 uppercase font-black">ซ้ำชั้น</span>}
+                                    {student.status === 'ย้ายออก' && <span className="ml-2 px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[10px] rounded border border-slate-200 uppercase font-black">ย้ายแล้ว</span>}
+                                  </div>
                                   <div className="text-xs text-slate-400 font-mono mt-0.5">{student.student_code}</div>
                                 </td>
                                 <td className="px-2 sm:px-4 py-3 text-center">
@@ -805,6 +845,49 @@ export default function App() {
                 บันทึกเลขที่
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Student Status Modal */}
+      {selectedStudentStatus && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+            <h3 className="text-xl font-bold text-emerald-900 mb-1">จัดการสถานะนักเรียน</h3>
+            <p className="text-sm font-medium text-emerald-600 mb-6">{selectedStudentStatus.student_name}</p>
+            
+            <div className="grid grid-cols-1 gap-3">
+              <button 
+                onClick={() => updateStudentStatus('ปกติ')}
+                className={`w-full px-4 py-3 text-sm rounded-xl font-bold transition-all flex items-center justify-between border-2 ${selectedStudentStatus.status === 'ปกติ' || !selectedStudentStatus.status ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-slate-100 text-slate-600 hover:border-emerald-200'}`}
+              >
+                <span>สถานะปกติ</span>
+                {(!selectedStudentStatus.status || selectedStudentStatus.status === 'ปกติ') && <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>}
+              </button>
+              
+              <button 
+                onClick={() => updateStudentStatus('ย้ายออก')}
+                className={`w-full px-4 py-3 text-sm rounded-xl font-bold transition-all flex items-center justify-between border-2 ${selectedStudentStatus.status === 'ย้ายออก' ? 'bg-slate-50 border-slate-500 text-slate-700' : 'bg-white border-slate-100 text-slate-600 hover:border-slate-200'}`}
+              >
+                <span>ย้ายออก</span>
+                {selectedStudentStatus.status === 'ย้ายออก' && <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>}
+              </button>
+              
+              <button 
+                onClick={() => updateStudentStatus('ซ้ำชั้น')}
+                className={`w-full px-4 py-3 text-sm rounded-xl font-bold transition-all flex items-center justify-between border-2 ${selectedStudentStatus.status === 'ซ้ำชั้น' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-white border-slate-100 text-slate-600 hover:border-amber-200'}`}
+              >
+                <span>เรียนซ้ำชั้น</span>
+                {selectedStudentStatus.status === 'ซ้ำชั้น' && <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>}
+              </button>
+            </div>
+            
+            <button 
+              onClick={() => setSelectedStudentStatus(null)}
+              className="w-full mt-6 py-2 text-slate-400 hover:text-slate-600 text-sm font-bold transition-colors underline underline-offset-4"
+            >
+              ปิดหน้าต่าง
+            </button>
           </div>
         </div>
       )}

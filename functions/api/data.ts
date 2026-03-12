@@ -44,7 +44,8 @@ export const onRequest: PagesFunction<{ DB: D1Database; STUDENTS_DB: D1Database 
                 class: s.grade || '',
                 room: s.room || '',
                 number: s.number || '',
-                year: Number(s.academicYear) || 2568
+                year: Number(s.academicYear) || 2568,
+                status: s.status || 'ปกติ'
             }));
 
             // Robust Sorting in JavaScript instead of SQL to avoid missing column issues
@@ -101,9 +102,9 @@ export const onRequest: PagesFunction<{ DB: D1Database; STUDENTS_DB: D1Database 
 
                 studentQueries.push(sdb.prepare(`
                     INSERT OR REPLACE INTO students 
-                    (id, studentId, firstName, lastName, grade, room, number, academicYear) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                `).bind(s.id, s.code, firstName, lastName, s.class, s.room || null, s.number || null, s.year.toString()));
+                    (id, studentId, firstName, lastName, grade, room, number, academicYear, status) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).bind(s.id, s.code, firstName, lastName, s.class, s.room || null, s.number || null, s.year.toString(), s.status || 'ปกติ'));
             });
 
             // 2. Subjects -> lhb-grades-db (DB)
