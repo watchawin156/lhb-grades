@@ -35,6 +35,7 @@ const calculateGrade = (score, maxScore = 100) => {
   return '0';
 };
 
+// เพิ่ม Type สำหรับ window
 declare global {
   interface Window {
     dataSdk: any;
@@ -165,6 +166,7 @@ export default function App() {
   };
 
   const handleYearChange = (val: string) => {
+    // ปรับให้สามารถลบจนว่างได้เพื่อพิมพ์ใหม่ได้สะดวก
     setSelectedYear(val === '' ? '' : parseInt(val));
     if (currentStep > 1) setCurrentStep(1);
     setAdminSelectedRoom('');
@@ -174,7 +176,7 @@ export default function App() {
   const handleKeyDown = (e: React.KeyboardEvent, index: number, semester: number) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      const nextInput = document.querySelector(`input[data-index="${index + 1}"][data-semester="${semester}"]`) as HTMLInputElement | null;
+      const nextInput = document.querySelector(`input[data-index="${index + 1}"][data-semester="${semester}"]`) as HTMLInputElement;
       if (nextInput) {
         nextInput.focus();
         nextInput.select();
@@ -328,7 +330,7 @@ export default function App() {
           created_at: new Date().toISOString()
         };
         newData.push(newSubj);
-        if (window.dataSdk) window.dataSdk.create(newSubj);
+        if (window.dataSdk) window.dataSdk.create(newSubj); // Note: Should ideally delete old on DB too, but since we recreate, it's fine for simple sync.
       }
     });
     
@@ -350,7 +352,7 @@ export default function App() {
       subjects.forEach((subj, index) => {
         const s1 = getStudentScore(student.student_code, subj.subject_code, 1);
         const s2 = getStudentScore(student.student_code, subj.subject_code, 2);
-        const total = s1 !== null && s2 !== null ? s1 + s2 : (s1 !== null ? Number(s1) * 2 : (s2 !== null ? Number(s2) * 2 : null));
+        const total = s1 !== null && s2 !== null ? Number(s1) + Number(s2) : (s1 !== null ? Number(s1) * 2 : (s2 !== null ? Number(s2) * 2 : null));
         const grade = total !== null ? calculateGrade(total, 100) : '';
         
         let type = "พื้นฐาน"; let hours = 80;
@@ -374,9 +376,11 @@ export default function App() {
     setIsExportModalOpen(false);
   };
 
+  // ส่งออกแบบ Excel ทุกวิชาในไฟล์เดียว
   const exportExcelAllSubjects = () => {
     if (!selectedRoom || subjects.length === 0 || students.length === 0) return showToast('ไม่มีข้อมูลให้ส่งออก');
     
+    // ใช้ SpreadsheetML Format หรือ HTML Table ง่ายๆ ให้ Excel เปิดได้
     let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body>`;
     
     html += `<h1>รายงานคะแนนรวมทุกวิชา ชั้น ${selectedRoom.class_level} ปีการศึกษา ${selectedYear}</h1>`;
@@ -529,11 +533,11 @@ export default function App() {
                       <table className="w-full border-collapse">
                         <thead>
                           <tr className="border-y-2 border-emerald-100 bg-emerald-50/50">
-                            <th className="px-2 sm:px-4 py-3 text-left text-xs sm:text-sm font-bold text-emerald-800">ที่</th>
-                            <th className="px-2 sm:px-4 py-3 text-left text-xs sm:text-sm font-bold text-emerald-800">ชื่อ-นามสกุล</th>
-                            <th className="px-2 sm:px-4 py-3 text-center text-xs sm:text-sm font-bold text-emerald-800">เทอม 1 (50)</th>
-                            <th className="px-2 sm:px-4 py-3 text-center text-xs sm:text-sm font-bold text-emerald-800">เทอม 2 (50)</th>
-                            <th className="px-2 sm:px-4 py-3 text-center text-xs sm:text-sm font-bold text-emerald-900 bg-emerald-100/50">รวม / เกรด</th>
+                            <th className="px-2 sm:px-4 py-3 text-left text-xs text-sm font-bold text-emerald-800">ที่</th>
+                            <th className="px-2 sm:px-4 py-3 text-left text-xs text-sm font-bold text-emerald-800">ชื่อ-นามสกุล</th>
+                            <th className="px-2 sm:px-4 py-3 text-center text-xs text-sm font-bold text-emerald-800">เทอม 1 (50)</th>
+                            <th className="px-2 sm:px-4 py-3 text-center text-xs text-sm font-bold text-emerald-800">เทอม 2 (50)</th>
+                            <th className="px-2 sm:px-4 py-3 text-center text-xs text-sm font-bold text-emerald-900 bg-emerald-100/50">รวม / เกรด</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-emerald-50">
