@@ -178,11 +178,13 @@ window.dataSdk = {
         // Subjects are deduplicated by code
         if (!subjects.find(s => s.code === d.subject_code)) {
           subjects.push({
-            id: this.idMap.subjects[d.subject_code] || `sub-${Date.now()}-${Math.random()}`,
+            id: this.idMap.subjects[d.subject_code] || `subj-${Date.now()}-${Math.random()}`,
             code: d.subject_code,
             name: d.subject_name,
+            class_level: d.class_level,
             maxScore: d.max_score,
-            semester: 1, // API handles semester inside scores
+            year: d.year === 0 ? null : d.year,
+            // API handles semester inside scores
             type: d.subject_name.includes('เพิ่มเติม') ? 'เพิ่มเติม' : 'พื้นฐาน',
             credit: 1
           });

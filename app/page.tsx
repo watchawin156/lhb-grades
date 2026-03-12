@@ -382,10 +382,10 @@ export default function App() {
     const lines = bulkSubjectText.split('\n').map(l => l.trim()).filter(l => l);
     
     let newData = [...allData];
-    // Remove old subjects for this room/year
-    newData = newData.filter(d => !(d.type === 'subject' && d.class_level === adminSelectedRoom && d.year === Number(selectedYear)));
+    // Remove old subjects for this room (both specific year and template)
+    newData = newData.filter(d => !(d.type === 'subject' && d.class_level === adminSelectedRoom));
     
-    // Add new subjects
+    // Add new subjects as templates (year = null/0)
     lines.forEach(line => {
       const [code, name, maxScore] = line.split('\t');
       if (code && name) {
@@ -395,11 +395,11 @@ export default function App() {
           subject_name: name.trim(),
           class_level: adminSelectedRoom,
           max_score: Number(maxScore) || 100,
-          year: Number(selectedYear),
+          year: 0, // 0 or null represents a universal template for this class level
           created_at: new Date().toISOString()
         };
         newData.push(newSubj);
-        if (window.dataSdk) window.dataSdk.create(newSubj); // Note: Should ideally delete old on DB too, but since we recreate, it's fine for simple sync.
+        if (window.dataSdk) window.dataSdk.create(newSubj);
       }
     });
     
