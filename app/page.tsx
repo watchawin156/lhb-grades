@@ -385,7 +385,6 @@ export default function App() {
     // Remove old subjects for this room (both specific year and template)
     newData = newData.filter(d => !(d.type === 'subject' && d.class_level === adminSelectedRoom));
     
-    // Add new subjects as templates (year = null/0)
     lines.forEach(line => {
       const [code, name, maxScore] = line.split('\t');
       if (code && name) {
@@ -395,13 +394,15 @@ export default function App() {
           subject_name: name.trim(),
           class_level: adminSelectedRoom,
           max_score: Number(maxScore) || 100,
-          year: 0, // 0 or null represents a universal template for this class level
+          year: 0, // 0 represents a universal template for this class level
           created_at: new Date().toISOString()
         };
         newData.push(newSubj);
-        if (window.dataSdk) window.dataSdk.create(newSubj);
       }
     });
+
+    // บันทึกสถานะทั้งหมดไปยังฐานข้อมูลพร้อมกัน
+    if (window.dataSdk) window.dataSdk.syncAll(newData);
     
     setAllData(newData);
     setIsBulkEditSubjects(false);

@@ -152,6 +152,12 @@ window.dataSdk = {
     this.debouncedSync();
   },
 
+  // New method to sync the entire state at once
+  syncAll: function(allData) {
+    this.cachedData = [...allData];
+    this.debouncedSync();
+  },
+
   timer: null,
   debouncedSync: function() {
     if (this.timer) clearTimeout(this.timer);
@@ -183,7 +189,7 @@ window.dataSdk = {
             name: d.subject_name,
             class_level: d.class_level,
             maxScore: d.max_score,
-            year: d.year === 0 ? null : d.year,
+            year: (!d.year || d.year === 0) ? null : Number(d.year),
             // API handles semester inside scores
             type: d.subject_name.includes('เพิ่มเติม') ? 'เพิ่มเติม' : 'พื้นฐาน',
             credit: 1
