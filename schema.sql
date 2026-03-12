@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS subjects (
     semester INTEGER DEFAULT 1,
     type TEXT DEFAULT 'พื้นฐาน',
     credit REAL DEFAULT 1,
+    class_level TEXT,
+    year INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

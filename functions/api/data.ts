@@ -30,9 +30,25 @@ export const onRequest: PagesFunction<{ DB: D1Database; STUDENTS_DB: D1Database 
                 studentsQuery += conditions.join(" AND ");
             }
 
+            let subjectsQuery = "SELECT * FROM subjects";
+            const subParams: any[] = [];
+            if (filterGrade || filterYear) {
+                subjectsQuery += " WHERE ";
+                const subConditions = [];
+                if (filterGrade) {
+                    subConditions.push("class_level = ?");
+                    subParams.push(filterGrade);
+                }
+                if (filterYear) {
+                    subConditions.push("year = ?");
+                    subParams.push(Number(filterYear));
+                }
+                subjectsQuery += subConditions.join(" AND ");
+            }
+
             const [stdRes, subRes, scoRes] = await Promise.all([
                 sdb.prepare(studentsQuery).bind(...params).all(),
-                db.prepare("SELECT * FROM subjects").all(),
+                db.prepare(subjectsQuery).bind(...subParams).all(),
                 db.prepare("SELECT * FROM scores").all()
             ]);
 
@@ -110,8 +126,8 @@ export const onRequest: PagesFunction<{ DB: D1Database; STUDENTS_DB: D1Database 
             // 2. Subjects -> lhb-grades-db (DB)
             gradeQueries.push(db.prepare("DELETE FROM subjects"));
             subjects.forEach((s: any) => {
-                gradeQueries.push(db.prepare("INSERT INTO subjects (id, code, name, maxScore, semester, type, credit) VALUES (?, ?, ?, ?, ?, ?, ?)")
-                    .bind(s.id, s.code, s.name, s.maxScore, s.semester, s.type || 'พื้นฐาน', s.credit || 1));
+                gradeQueries.push(db.prepare("INSERT INTO subjects (id, code, name, maxScore, semester, type, credit, class_level, year) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                    .bind(s.id, s.code, s.name, s.maxScore, s.semester, s.type || 'พื้นฐาน', s.credit || 1, s.class_level, s.year));
             });
 
             // 3. Scores -> lhb-grades-db (DB)
