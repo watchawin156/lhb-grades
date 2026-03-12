@@ -342,30 +342,29 @@ export default function App() {
     // 2. ระบุปีการศึกษาทั้งหมด (เรียงลำดับ)
     const years = [...new Set(relatedScores.map(s => s.year))].sort((a, b) => a - b);
     
-    // 3. สร้างกลุ่มวิชาสำหรับแต่ละปี (ตามรูปแบบ ปพ.1)
-    // เราจะระบุลำดับกลุ่มวิชาที่ต้องการแสดง
+    // 3. สร้างกลุ่มหัวตาราง (Headers) แยกกลุ่มวิชาปกติและกิจกรรม (ตามรูปแบบ ปพ.1)
     let headers = ['#', 'รหัสนักเรียน', 'ชื่อ-สกุล'];
     
+    // กลุ่ม 1: วิชาปกติ (พื้นฐาน + เพิ่มเติม) ของทุกปี
     years.forEach(yr => {
       headers.push(`${yr} ชั้นเรียน`);
-      
       const yearSubjects = allSubjects.filter(s => (s.year === yr || !s.year) && s.class_level.includes(yr.toString().slice(-1)));
       const uniqueSubjects = [...new Map(yearSubjects.map(s => [s.subject_code, s])).values()];
-      
-      // กรองเฉพาะวิชาพื้นฐาน/เพิ่มเติม
       const normalSubjects = uniqueSubjects.filter(s => !s.subject_name.includes("แนะแนว") && !s.subject_name.includes("ลูกเสือ") && !s.subject_name.includes("ชุมนุม"));
-      normalSubjects.forEach(sub => {
-        headers.push(`${sub.subject_code} ${sub.subject_name}`);
-      });
       
-      // คอลัมน์ว่างคั่น
-      headers.push('');
+      normalSubjects.forEach(sub => headers.push(`${sub.subject_code} ${sub.subject_name}`));
+      headers.push(''); // คอลัมน์ว่างคั่นตามเทมเพลต
+    });
 
-      // กรองเฉพาะกิจกรรมพัฒนาผู้เรียน
+    // กลุ่ม 2: กิจกรรมพัฒนาผู้เรียน (ของทุกปี อยู่ท้ายตาราง)
+    years.forEach(yr => {
+      headers.push(`${yr} กิจกรรม`);
+      const yearSubjects = allSubjects.filter(s => (s.year === yr || !s.year) && s.class_level.includes(yr.toString().slice(-1)));
+      const uniqueSubjects = [...new Map(yearSubjects.map(s => [s.subject_code, s])).values()];
       const activitySubjects = uniqueSubjects.filter(s => s.subject_name.includes("แนะแนว") || s.subject_name.includes("ลูกเสือ") || s.subject_name.includes("ชุมนุม"));
-      activitySubjects.forEach(sub => {
-        headers.push(`${sub.subject_code} ${sub.subject_name}`);
-      });
+      
+      activitySubjects.forEach(sub => headers.push(`${sub.subject_code} ${sub.subject_name}`));
+      headers.push(''); // คอลัมน์ว่างส่งท้ายปี
     });
 
     let csvContent = headers.join(',') + '\n';
@@ -374,39 +373,41 @@ export default function App() {
     adminStudents.forEach((student, index) => {
       let row: any[] = [index + 1, student.student_code, student.student_name];
       
+      // ข้อมูลวิชาปกติ
       years.forEach(yr => {
         const yearSubjects = allSubjects.filter(s => (s.year === yr || !s.year) && s.class_level.includes(yr.toString().slice(-1)));
         const uniqueSubjects = [...new Map(yearSubjects.map(s => [s.subject_code, s])).values()];
         const normalSubjects = uniqueSubjects.filter(s => !s.subject_name.includes("แนะแนว") && !s.subject_name.includes("ลูกเสือ") && !s.subject_name.includes("ชุมนุม"));
-        const activitySubjects = uniqueSubjects.filter(s => s.subject_name.includes("แนะแนว") || s.subject_name.includes("ลูกเสือ") || s.subject_name.includes("ชุมนุม"));
 
-        row.push(''); // คอลัมน์ว่างสำหรับปีการศึกษา
-        
-        // คะแนนวิชาปกติ
+        row.push(''); // ชื่อชั้นเรียน (ว่าง)
         normalSubjects.forEach(sub => {
           const s1 = relatedScores.find(sc => sc.student_code === student.student_code && sc.subject_code === sub.subject_code && sc.year === yr && sc.semester === 1)?.score;
           const s2 = relatedScores.find(sc => sc.student_code === student.student_code && sc.subject_code === sub.subject_code && sc.year === yr && sc.semester === 2)?.score;
-          
           if (s1 !== undefined && s2 !== undefined) {
-            const total = Number(s1) + Number(s2);
-            row.push(calculateGrade(total, 100));
+            row.push(calculateGrade(Number(s1) + Number(s2), 100));
           } else if (s1 !== undefined || s2 !== undefined) {
-            const val = s1 !== undefined ? s1 : s2;
-            row.push(calculateGrade(Number(val) * 2, 100));
+            row.push(calculateGrade(Number(s1 ?? s2) * 2, 100));
           } else {
             row.push('');
           }
         });
+        row.push(''); // คั่น
+      });
 
-        row.push(''); // คั่นกิจกรรม
+      // ข้อมูลกิจกรรม
+      years.forEach(yr => {
+        const yearSubjects = allSubjects.filter(s => (s.year === yr || !s.year) && s.class_level.includes(yr.toString().slice(-1)));
+        const uniqueSubjects = [...new Map(yearSubjects.map(s => [s.subject_code, s])).values()];
+        const activitySubjects = uniqueSubjects.filter(s => s.subject_name.includes("แนะแนว") || s.subject_name.includes("ลูกเสือ") || s.subject_name.includes("ชุมนุม"));
 
-        // คะแนนกิจกรรม
+        row.push(''); // ชื่อกลุ่มกิจกรรม (ว่าง)
         activitySubjects.forEach(sub => {
           const s1 = relatedScores.find(sc => sc.student_code === student.student_code && sc.subject_code === sub.subject_code && sc.year === yr && sc.semester === 1)?.score;
           const s2 = relatedScores.find(sc => sc.student_code === student.student_code && sc.subject_code === sub.subject_code && sc.year === yr && sc.semester === 2)?.score;
-          const pass = (s1 === 'ผ' || s2 === 'ผ' || Number(s1) > 0 || Number(s2) > 0) ? 'ผ' : 'มผ';
+          const pass = (s1 === 'ผ' || s2 === 'ผ' || Number(s1) > 0 || Number(s2) > 0) ? 'ผ' : (s1||s2 ? 'มผ' : '');
           row.push(pass);
         });
+        row.push(''); // คั่น
       });
       
       csvContent += row.join(',') + '\n';
@@ -632,7 +633,15 @@ export default function App() {
         const headers = ['#', 'รหัสวิชา', 'รายวิชา', 'ประเภท', 'ชั่วโมง', 'เทอม 1', 'เทอม 2', 'รวม', 'เกรด'];
         
         let x = 30;
-        page.drawRectangle({ x, y: y - 20, width: 535, height: 20, color: rgb(0.95, 0.95, 0.95), borderWidth: 1 });
+        page.drawRectangle({ 
+          x, 
+          y: y - 20, 
+          width: 535, 
+          height: 20, 
+          color: rgb(0.95, 0.95, 0.95), 
+          borderColor: rgb(0, 0, 0),
+          borderWidth: 1 
+        });
         
         headers.forEach((h, i) => {
           page.drawText(h, { x: x + 5, y: y - 15, size: 12, font: thaiFontBold });
@@ -664,7 +673,15 @@ export default function App() {
           let curX = 30;
           const rowData = [idx+1, subj.subject_code, subj.subject_name, type, hours, s1??'', s2??'', total??'', grade];
           
-          page.drawRectangle({ x: curX, y: y - 20, width: 535, height: 20, borderWidth: 1 });
+          page.drawRectangle({ 
+            x: curX, 
+            y: y - 20, 
+            width: 535, 
+            height: 20, 
+            color: rgb(1, 1, 1), // ระบุสีขาวเพื่อแก้ปัญหาจอดำ
+            borderColor: rgb(0, 0, 0),
+            borderWidth: 1 
+          });
           rowData.forEach((val, i) => {
             page.drawText(String(val), { x: curX + 5, y: y - 15, size: 11, font: thaiFont });
             curX += colWidths[i];
