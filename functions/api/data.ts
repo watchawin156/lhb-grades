@@ -100,8 +100,8 @@ export const onRequest: PagesFunction<{ DB: D1Database; STUDENTS_DB: D1Database 
             const studentQueries: any[] = [];
 
             // 1. Students -> lhb-students-db (STUDENTS_DB)
-            // Note: We use INSERT OR REPLACE instead of DELETE to avoid wiping other apps' data
             students.forEach((s: any) => {
+                if (!s.id || !s.code) return; // skip invalid
                 const fullName = (s.name || '').trim();
                 const parts = fullName.split(' ');
                 const firstName = parts[0] || '';
@@ -111,39 +111,43 @@ export const onRequest: PagesFunction<{ DB: D1Database; STUDENTS_DB: D1Database 
                     INSERT OR REPLACE INTO students 
                     (id, studentId, firstName, lastName, grade, room, number, academicYear, status) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `).bind(s.id, s.code, firstName, lastName, s.class, s.room || null, s.number || null, s.year.toString(), s.status || 'ปกติ'));
+                `).bind(s.id, s.code, firstName, lastName, s.class, s.room || null, s.number || null, (s.year || 2568).toString(), s.status || 'ปกติ'));
             });
 
             // 2. Subjects -> lhb-grades-db (DB)
-            // ใช้ INSERT OR REPLACE แทน DELETE ทั้งหมด เพื่อป้องกันวิชา Template หายจากฐานข้อมูล
+            // ใช้ INSERT OR REPLACE แทน DELETE ทั้งหมด เพื่อป้องกันวิชา Template หาย
             subjects.forEach((s: any) => {
+                if (!s.id || !s.code) return; // skip invalid
                 gradeQueries.push(db.prepare("INSERT OR REPLACE INTO subjects (id, code, name, maxScore, semester, type, credit, class_level, year) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-                    .bind(s.id, s.code, s.name, s.maxScore, s.semester, s.type || 'พื้นฐาน', s.credit || 1, s.class_level, s.year));
+                    .bind(s.id, s.code, s.name, s.maxScore || 100, s.semester || 1, s.type || 'พื้นฐาน', s.credit || 1, s.class_level || null, s.year ?? null));
             });
 
             // 3. Scores -> lhb-grades-db (DB)
-            gradeQueries.push(db.prepare("DELETE FROM scores"));
-            scores.forEach((s: any) => {
-                if (s.score1 !== undefined) {
-                    gradeQueries.push(db.prepare("INSERT INTO scores (student_internal_id, subject_internal_id, score, academic_year, semester) VALUES (?, ?, ?, ?, ?)")
-                        .bind(s.studentId, s.subjectId, s.score1, Number(s.year), 1));
-                }
-                if (s.score2 !== undefined) {
-                    gradeQueries.push(db.prepare("INSERT INTO scores (student_internal_id, subject_internal_id, score, academic_year, semester) VALUES (?, ?, ?, ?, ?)")
-                        .bind(s.studentId, s.subjectId, s.score2, Number(s.year), 2));
-                }
-            });
+            if (scores.length > 0) {
+                gradeQueries.push(db.prepare("DELETE FROM scores"));
+                scores.forEach((s: any) => {
+                    if (!s.studentId || !s.subjectId) return; // skip invalid
+                    if (s.score1 !== undefined && s.score1 !== null) {
+                        gradeQueries.push(db.prepare("INSERT INTO scores (student_internal_id, subject_internal_id, score, academic_year, semester) VALUES (?, ?, ?, ?, ?)")
+                            .bind(s.studentId, s.subjectId, s.score1, Number(s.year) || 2568, 1));
+                    }
+                    if (s.score2 !== undefined && s.score2 !== null) {
+                        gradeQueries.push(db.prepare("INSERT INTO scores (student_internal_id, subject_internal_id, score, academic_year, semester) VALUES (?, ?, ?, ?, ?)")
+                            .bind(s.studentId, s.subjectId, s.score2, Number(s.year) || 2568, 2));
+                    }
+                });
+            }
 
-            // Execute in separate batches for separate databases
-            await Promise.all([
-                sdb.batch(studentQueries),
-                db.batch(gradeQueries)
-            ]);
+            // Execute batches
+            const promises = [];
+            if (studentQueries.length > 0) promises.push(sdb.batch(studentQueries));
+            if (gradeQueries.length > 0) promises.push(db.batch(gradeQueries));
+            if (promises.length > 0) await Promise.all(promises);
 
             return Response.json({ success: true });
         } catch (error: any) {
             console.error("D1 Batch Error:", error);
-            return Response.json({ error: error.message }, { status: 500 });
+            return Response.json({ error: error.message, stack: error.stack }, { status: 500 });
         }
     }
 
