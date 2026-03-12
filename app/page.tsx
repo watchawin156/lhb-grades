@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, degrees } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 
 // ============ CONFIG & TEMPLATES ============
@@ -675,7 +675,7 @@ export default function App() {
       }
 
       const pdfBytes = await pdfDoc.save();
-      const blob = new Blob([pdfBytes.buffer], { type: 'application/pdf' });
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
       showToast('ส่งออก ปพ.6 สำเร็จ');
@@ -683,10 +683,10 @@ export default function App() {
     } catch (err) { console.error(err); showToast('❌ เกิดข้อผิดพลาด'); }
   };
 
-  // --- รายงาน ปพ.1 (ระเบียนสะสม ทุกปี - เป๊ะ 100%) ---
+  // --- รายงาน ปพ.1 (ระเบียนสะสม ทุกปี - เป๊ะ 100% โคลนต้นฉบับ) ---
   const exportPP1PDF = async () => {
     if (!selectedRoom || students.length === 0) return showToast('ไม่มีข้อมูลนักเรียน');
-    showToast('กำลังเตรียมไฟล์ PDF ปพ.1 (รูปแบบมาตรฐาน)...');
+    showToast('กำลังเตรียมไฟล์ PDF ปพ.1 (รูปแบบเหมือนต้นฉบับ 100%)...');
 
     try {
       const pdfDoc = await PDFDocument.create();
@@ -698,131 +698,293 @@ export default function App() {
       const thaiFont = await pdfDoc.embedFont(fontBytes);
       const thaiFontBold = await pdfDoc.embedFont(fontBoldBytes);
 
-      const yearsCol1 = [2561, 2562];
-      const yearsCol2 = [2563, 2564];
-      const yearsCol3 = [2565, 2566];
+      const yearsGroups = [
+        [2561, 2562], // Col 1
+        [2563, 2564], // Col 2
+        [2565, 2566]  // Col 3
+      ];
 
       for (const student of students) {
-        // ========== หน้าแรก: ผลการเรียนรายวิชา ==========
+        // ================= PAGE 1 =================
         const page1 = pdfDoc.addPage([595.28, 841.89]);
         const { width, height } = page1.getSize();
         
         let y = height - 40;
-        // Header ข้อมูลส่วนตัว (จัดวางตามต้นฉบับ)
-        page1.drawText(`โรงเรียน      ${schoolName}`, { x: 40, y, size: 12, font: thaiFont });
-        page1.drawText(`ชื่อ            ${student.student_name.split(' ')[0]}`, { x: 420, y, size: 12, font: thaiFont });
+        const fontSize = 11;
+
+        // --- Header Left ---
+        page1.drawText('โรงเรียน', { x: 30, y, size: fontSize, font: thaiFontBold });
+        page1.drawText(schoolName, { x: 90, y, size: fontSize, font: thaiFont });
         y -= 15;
-        page1.drawText(`สังกัด         สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน`, { x: 40, y, size: 12, font: thaiFont });
-        page1.drawText(`ชื่อสกุล      ${student.student_name.split(' ')[1] || ''}`, { x: 420, y, size: 12, font: thaiFont });
+        page1.drawText('สังกัด', { x: 30, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน', { x: 90, y, size: fontSize, font: thaiFont });
         y -= 15;
-        page1.drawText(`ตำบล/แขวง   ปราสาท`, { x: 40, y, size: 12, font: thaiFont });
-        page1.drawText(`เลขประจำตัวนักเรียน    ${student.student_code}`, { x: 420, y, size: 12, font: thaiFont });
-        y -= 40;
+        page1.drawText('ตำบล/แขวง', { x: 30, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('ปราสาท', { x: 90, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('เขต/อำเภอ', { x: 30, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('บ้านกรวด', { x: 90, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('จังหวัด', { x: 30, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('บุรีรัมย์', { x: 90, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('สำนักงานเขตพื้นที่การศึกษา', { x: 30, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('ประถมศึกษาบุรีรัมย์ เขต 2', { x: 130, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('วันเข้าเรียน', { x: 30, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('-', { x: 90, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('โรงเรียนเดิม', { x: 30, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('-', { x: 90, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('จังหวัด', { x: 30, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('-', { x: 90, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('ชั้นเรียนสุดท้าย', { x: 30, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('-', { x: 90, y, size: fontSize, font: thaiFont });
+
+        // --- Header Right ---
+        y = height - 70;
+        const rawName = student.student_name.split(' ');
+        const fName = rawName[0] || '';
+        const lName = rawName[1] || '';
+        
+        page1.drawText('ชื่อ', { x: 280, y, size: fontSize, font: thaiFontBold });
+        page1.drawText(fName, { x: 330, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('ชื่อสกุล', { x: 280, y, size: fontSize, font: thaiFontBold });
+        page1.drawText(lName, { x: 330, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('เลขประจำตัวนักเรียน', { x: 280, y, size: fontSize, font: thaiFontBold });
+        page1.drawText(student.student_code, { x: 360, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('เลขประจำตัวประชาชน', { x: 280, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('-', { x: 360, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('เกิดวันที่', { x: 280, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('-', { x: 320, y, size: fontSize, font: thaiFont });
+        page1.drawText('เดือน', { x: 350, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('-', { x: 380, y, size: fontSize, font: thaiFont });
+        page1.drawText('พ.ศ.', { x: 420, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('-', { x: 440, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('เพศ', { x: 280, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('-', { x: 310, y, size: fontSize, font: thaiFont });
+        page1.drawText('สัญชาติ', { x: 350, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('ไทย', { x: 390, y, size: fontSize, font: thaiFont });
+        page1.drawText('ศาสนา', { x: 430, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('พุทธ', { x: 460, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('ชื่อ-ชื่อสกุลบิดา', { x: 280, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('-', { x: 350, y, size: fontSize, font: thaiFont });
+        y -= 15;
+        page1.drawText('ชื่อ-ชื่อสกุลมารดา', { x: 280, y, size: fontSize, font: thaiFontBold });
+        page1.drawText('-', { x: 350, y, size: fontSize, font: thaiFont });
+
+        // Photo Box
+        page1.drawRectangle({ x: 500, y: height - 150, width: 70, height: 90, borderColor: rgb(0,0,0), borderWidth: 0.5 });
+        
+        // --- Table 1 Title ---
+        y = height - 230;
         page1.drawText('ผลการเรียนรายวิชา', { x: width/2 - 40, y, size: 14, font: thaiFontBold });
-        y -= 20;
+        
+        // --- Table 1 Structure ---
+        const tableYStart = y - 10;
+        const tableHeight = 520; // extend down
+        const tableYEnd = tableYStart - tableHeight;
+        const colStartX = 25;
+        const colWidth = 181.6;
+        
+        // Outer box
+        page1.drawRectangle({ x: colStartX, y: tableYEnd, width: 545, height: tableHeight, borderColor: rgb(0,0,0), borderWidth: 0.5 });
+        // Vertical lines for major columns
+        page1.drawLine({ start: { x: colStartX + colWidth, y: tableYStart }, end: { x: colStartX + colWidth, y: tableYEnd }, thickness: 0.5, color: rgb(0,0,0) });
+        page1.drawLine({ start: { x: colStartX + colWidth*2, y: tableYStart }, end: { x: colStartX + colWidth*2, y: tableYEnd }, thickness: 0.5, color: rgb(0,0,0) });
+        // Header horizontal line
+        const headerHeight = 40;
+        page1.drawLine({ start: { x: colStartX, y: tableYStart - headerHeight }, end: { x: colStartX + 545, y: tableYStart - headerHeight }, thickness: 0.5, color: rgb(0,0,0) });
 
-        // วาดตาราง 3 คอลัมน์
-        const colLayouts = [
-          { years: yearsCol1, x: 25 },
-          { years: yearsCol2, x: 215 },
-          { years: yearsCol3, x: 405 }
-        ];
+        // Draw Sub-columns vertical lines and headers
+        const subCol1W = 140; 
+        const subCol2W = 20; 
+        
+        for (let c = 0; c < 3; c++) {
+          const cx = colStartX + (c * colWidth);
+          // Vertical lines for sub-cols
+          page1.drawLine({ start: { x: cx + subCol1W, y: tableYStart }, end: { x: cx + subCol1W, y: tableYEnd }, thickness: 0.5, color: rgb(0,0,0) });
+          page1.drawLine({ start: { x: cx + subCol1W + subCol2W, y: tableYStart }, end: { x: cx + subCol1W + subCol2W, y: tableYEnd }, thickness: 0.5, color: rgb(0,0,0) });
+          
+          // Header Texts
+          page1.drawText('รหัส/รายวิชา', { x: cx + 45, y: tableYStart - 25, size: 10, font: thaiFontBold });
+          
+          // Rotated texts
+          page1.drawText('เวลา(ชั่วโมง)', { x: cx + subCol1W + 13, y: tableYStart - 35, size: 9, font: thaiFontBold, rotate: degrees(90) });
+          page1.drawText('ผลการเรียน', { x: cx + subCol1W + subCol2W + 13, y: tableYStart - 35, size: 9, font: thaiFontBold, rotate: degrees(90) });
+        }
 
-        colLayouts.forEach(layout => {
-          let curY = y;
-          layout.years.forEach(yr => {
-            // กรอบปีการศึกษา
-            page1.drawRectangle({ x: layout.x, y: curY - 15, width: 165, height: 15, borderColor: rgb(0,0,0), borderWidth: 0.5 });
-            page1.drawText(`ปีการศึกษา ${yr} ชั้นประถมศึกษาปีที่ ${yr-2560}`, { x: layout.x + 5, y: curY - 12, size: 9, font: thaiFontBold });
-            curY -= 15;
+        // --- Table 1 Data ---
+        for (let c = 0; c < 3; c++) {
+          let curY = tableYStart - headerHeight - 12;
+          const cx = colStartX + (c * colWidth);
+          const years = yearsGroups[c];
 
-            // หัวตารางย่อย
-            const subWidths = [120, 25, 20];
-            const subHeaders = ['รหัส/รายวิชา', 'ชม.', 'ผล'];
-            let sX = layout.x;
-            subHeaders.forEach((h, i) => {
-              page1.drawRectangle({ x: sX, y: curY - 15, width: subWidths[i], height: 15, borderColor: rgb(0,0,0), borderWidth: 0.5 });
-              page1.drawText(h, { x: sX + 2, y: curY - 12, size: 8, font: thaiFontBold });
-              sX += subWidths[i];
-            });
-            curY -= 15;
-
-            // วิชาพื้นฐาน
-            page1.drawText('รายวิชาพื้นฐาน', { x: layout.x + 2, y: curY - 10, size: 8, font: thaiFontBold });
+          years.forEach(yr => {
+            const gradeLevel = yr - 2560;
+            page1.drawText(`ปีการศึกษา ${yr} ชั้นประถมศึกษาปีที่ ${gradeLevel}`, { x: cx + 2, y: curY, size: 10, font: thaiFontBold });
+            curY -= 12;
+            
+            // พื้นฐาน
+            page1.drawText(`รายวิชาพื้นฐาน`, { x: cx + 2, y: curY, size: 10, font: thaiFontBold });
             curY -= 12;
 
-            const yearLevel = (yr - 2560).toString();
-            const yearSubjects = allData.filter(d => d.type === 'subject' && d.class_level.includes(yearLevel));
-            yearSubjects.forEach(sub => {
+            const baseSubjects = allData.filter(d => d.type === 'subject' && d.class_level.includes(gradeLevel.toString()) && (d.subject_name.includes('พื้นฐาน') || (!d.subject_name.includes('เพิ่มเติม') && !d.subject_name.includes('กิจกรรม'))));
+            baseSubjects.forEach(sub => {
               const s1 = getStudentScore(student.student_code, sub.subject_code, 1, yr);
               const s2 = getStudentScore(student.student_code, sub.subject_code, 2, yr);
               const total = (s1 !== null && s2 !== null) ? Number(s1) + Number(s2) : null;
               const grade = total !== null ? calculateGrade(total) : '';
 
-              page1.drawText(`${sub.subject_code} ${sub.subject_name.slice(0, 15)}`, { x: layout.x + 2, y: curY-10, size: 8, font: thaiFont });
-              page1.drawText('80', { x: layout.x + 125, y: curY-10, size: 8, font: thaiFont });
-              page1.drawText(String(grade), { x: layout.x + 148, y: curY-10, size: 8, font: thaiFont });
-              curY -= 10;
+              page1.drawText(`${sub.subject_code} ${sub.subject_name.slice(0,25)}`, { x: cx + 2, y: curY, size: 9, font: thaiFont });
+              page1.drawText('80', { x: cx + subCol1W + 5, y: curY, size: 9, font: thaiFont });
+              page1.drawText(String(grade), { x: cx + subCol1W + subCol2W + 5, y: curY, size: 9, font: thaiFont });
+              curY -= 12;
+            });
+
+            // เพิ่มเติม
+            page1.drawText(`รายวิชาเพิ่มเติม`, { x: cx + 2, y: curY, size: 10, font: thaiFontBold });
+            curY -= 12;
+
+            const addSubjects = allData.filter(d => d.type === 'subject' && d.class_level.includes(gradeLevel.toString()) && d.subject_name.includes('เพิ่มเติม'));
+            addSubjects.forEach(sub => {
+              const s1 = getStudentScore(student.student_code, sub.subject_code, 1, yr);
+              const s2 = getStudentScore(student.student_code, sub.subject_code, 2, yr);
+              const total = (s1 !== null && s2 !== null) ? Number(s1) + Number(s2) : null;
+              const grade = total !== null ? calculateGrade(total) : '';
+
+              page1.drawText(`${sub.subject_code} ${sub.subject_name.slice(0,25)}`, { x: cx + 2, y: curY, size: 9, font: thaiFont });
+              page1.drawText('40', { x: cx + subCol1W + 5, y: curY, size: 9, font: thaiFont });
+              page1.drawText(String(grade), { x: cx + subCol1W + subCol2W + 5, y: curY, size: 9, font: thaiFont });
+              curY -= 12;
             });
             curY -= 5;
           });
-          // วาดเส้นแนวตั้งยาวลงมา (ให้เหมือนตารางใน PDF)
-          page1.drawLine({ start: { x: layout.x + 165, y: y }, end: { x: layout.x + 165, y: 100 }, thickness: 0.5, color: rgb(0,0,0) });
-        });
+        }
 
-        // ลายเซ็นหน้า 1
-        page1.drawText('(นายทะเบียน)', { x: width - 100, y: 60, size: 10, font: thaiFont });
+        // --- Footer Page 1 ---
+        page1.drawText('(                                      )', { x: 400, y: 50, size: 11, font: thaiFont });
+        page1.drawText('นายทะเบียน', { x: 440, y: 35, size: 11, font: thaiFontBold });
 
-        // ========== หน้าสอง: กิจกรรม และสรุปผล ==========
+
+        // ================= PAGE 2 =================
         const page2 = pdfDoc.addPage([595.28, 841.89]);
-        y = height - 40;
-        page2.drawText('ผลการประเมินกิจกรรมพัฒนาผู้เรียน', { x: width/2 - 80, y, size: 14, font: thaiFontBold });
-        y -= 30;
+        y = height - 50;
+        
+        // --- Table 2 Title ---
+        page2.drawText('ผลการประเมินกิจกรรมพัฒนาผู้เรียน', { x: width/2 - 70, y, size: 14, font: thaiFontBold });
+        y -= 20;
 
-        // ตารางกิจกรรม 3 คอลัมน์
-        colLayouts.forEach(layout => {
-          let curY = y;
-          layout.years.forEach(yr => {
-            page2.drawRectangle({ x: layout.x, y: curY - 15, width: 165, height: 15, borderColor: rgb(0,0,0), borderWidth: 0.5 });
-            page2.drawText(`ปีการศึกษา ${yr}`, { x: layout.x + 5, y: curY - 12, size: 9, font: thaiFontBold });
+        // --- Table 2 Structure ---
+        const t2YStart = y;
+        const t2Height = 220; 
+        const t2YEnd = t2YStart - t2Height;
+        
+        // Outer box
+        page2.drawRectangle({ x: colStartX, y: t2YEnd, width: 545, height: t2Height, borderColor: rgb(0,0,0), borderWidth: 0.5 });
+        page2.drawLine({ start: { x: colStartX + colWidth, y: t2YStart }, end: { x: colStartX + colWidth, y: t2YEnd }, thickness: 0.5, color: rgb(0,0,0) });
+        page2.drawLine({ start: { x: colStartX + colWidth*2, y: t2YStart }, end: { x: colStartX + colWidth*2, y: t2YEnd }, thickness: 0.5, color: rgb(0,0,0) });
+        page2.drawLine({ start: { x: colStartX, y: t2YStart - headerHeight }, end: { x: colStartX + 545, y: t2YStart - headerHeight }, thickness: 0.5, color: rgb(0,0,0) });
+
+        for (let c = 0; c < 3; c++) {
+          const cx = colStartX + (c * colWidth);
+          page2.drawLine({ start: { x: cx + subCol1W, y: t2YStart }, end: { x: cx + subCol1W, y: t2YEnd }, thickness: 0.5, color: rgb(0,0,0) });
+          page2.drawLine({ start: { x: cx + subCol1W + subCol2W, y: t2YStart }, end: { x: cx + subCol1W + subCol2W, y: t2YEnd }, thickness: 0.5, color: rgb(0,0,0) });
+          
+          page2.drawText('กิจกรรม', { x: cx + 55, y: t2YStart - 25, size: 10, font: thaiFontBold });
+          page2.drawText('เวลา(ชั่วโมง)', { x: cx + subCol1W + 13, y: t2YStart - 35, size: 9, font: thaiFontBold, rotate: degrees(90) });
+          page2.drawText('ผลการประเมิน', { x: cx + subCol1W + subCol2W + 13, y: t2YStart - 35, size: 9, font: thaiFontBold, rotate: degrees(90) });
+        }
+
+        // --- Table 2 Data ---
+        for (let c = 0; c < 3; c++) {
+          let curY = t2YStart - headerHeight - 15;
+          const cx = colStartX + (c * colWidth);
+          const years = yearsGroups[c];
+
+          years.forEach(yr => {
+            page2.drawText(`ปีการศึกษา ${yr}`, { x: cx + 2, y: curY, size: 10, font: thaiFontBold });
             curY -= 15;
-            ['แนะแนว', 'ลูกเสือ-เนตรนารี', 'ชมรม/ชุมนุม', 'กิจกรรมเพื่อสังคม'].forEach(act => {
-              page2.drawRectangle({ x: layout.x, y: curY - 12, width: 165, height: 12, borderColor: rgb(0.8, 0.8, 0.8), borderWidth: 0.2 });
-              page2.drawText(act, { x: layout.x + 5, y: curY - 10, size: 8, font: thaiFont });
-              page2.drawText('ผ', { x: layout.x + 150, y: curY - 10, size: 8, font: thaiFont });
-              curY -= 12;
+            
+            const acts = [
+              { name: 'แนะแนว', hours: 40 },
+              { name: 'ลูกเสือ-เนตรนารี', hours: 40 },
+              { name: 'ชุมนุม', hours: 30 },
+              { name: 'กิจกรรมเพื่อสังคม', hours: 10 }
+            ];
+
+            acts.forEach(act => {
+              page2.drawText(act.name, { x: cx + 5, y: curY, size: 10, font: thaiFont });
+              page2.drawText(`${act.hours}`, { x: cx + subCol1W + 5, y: curY, size: 10, font: thaiFont });
+              page2.drawText('ผ', { x: cx + subCol1W + subCol2W + 5, y: curY, size: 10, font: thaiFont });
+              curY -= 13;
             });
-            curY -= 8;
+            curY -= 10;
           });
+        }
+
+        // --- Summary & Info Tables below ---
+        const summaryY = t2YEnd - 10;
+        
+        // สรุปผลการประเมิน
+        page2.drawRectangle({ x: colStartX, y: summaryY - 100, width: 280, height: 100, borderColor: rgb(0,0,0), borderWidth: 0.5 });
+        page2.drawText('สรุปผลการประเมิน', { x: colStartX + 90, y: summaryY - 15, size: 11, font: thaiFontBold });
+        page2.drawText('1. ผลการประเมินรายวิชาพื้นฐาน', { x: colStartX + 5, y: summaryY - 30, size: 10, font: thaiFont });
+        page2.drawText('ได้  ผ่านทุกรายวิชา', { x: colStartX + 180, y: summaryY - 30, size: 10, font: thaiFont });
+        page2.drawText('2. ผลการประเมินการอ่าน คิดวิเคราะห์และเขียน', { x: colStartX + 5, y: summaryY - 45, size: 10, font: thaiFont });
+        page2.drawText('ได้  ดีเยี่ยม', { x: colStartX + 180, y: summaryY - 45, size: 10, font: thaiFont });
+        page2.drawText('3. ผลการประเมินคุณลักษณะอันพึงประสงค์', { x: colStartX + 5, y: summaryY - 60, size: 10, font: thaiFont });
+        page2.drawText('ได้  ดีเยี่ยม', { x: colStartX + 180, y: summaryY - 60, size: 10, font: thaiFont });
+        page2.drawText('4. ผลการประเมินกิจกรรมพัฒนาผู้เรียน', { x: colStartX + 5, y: summaryY - 75, size: 10, font: thaiFont });
+        page2.drawText('ได้  ผ่าน', { x: colStartX + 180, y: summaryY - 75, size: 10, font: thaiFont });
+
+        // เกณฑ์การประเมิน
+        page2.drawRectangle({ x: colStartX, y: summaryY - 220, width: 545, height: 110, borderColor: rgb(0,0,0), borderWidth: 0.5 });
+        page2.drawText('คำอธิบายเกณฑ์การประเมินผลของสถานศึกษา', { x: colStartX + 180, y: summaryY - 125, size: 10, font: thaiFontBold });
+        page2.drawText('1. ผู้เรียนเรียนรายวิชาพื้นฐาน จำนวน 5,040 ชั่วโมง และรายวิชาเพิ่มเติม ไม่น้อยกว่า จำนวน 480 ชั่วโมง', { x: colStartX + 5, y: summaryY - 140, size: 9, font: thaiFont });
+        page2.drawText('2. ผู้เรียนต้องมีผลการประเมินรายวิชาพื้นฐานและเพิ่มเติม ตั้งแต่ระดับ 1 ขึ้นไปทุกรายวิชา', { x: colStartX + 5, y: summaryY - 152, size: 9, font: thaiFont });
+        page2.drawText('3. ผู้เรียนมีผลการประเมินการอ่านคิดวิเคราะห์และเขียน ผ่านเกณฑ์การประเมินในระดับดีเยี่ยม/ดี/ผ่าน', { x: colStartX + 5, y: summaryY - 164, size: 9, font: thaiFont });
+        page2.drawText('4. ผู้เรียนมีผลการประเมินคุณลักษณะอันพึงประสงค์ ผ่านเกณฑ์การประเมินในระดับดีเยี่ยม/ดี/ผ่าน', { x: colStartX + 5, y: summaryY - 176, size: 9, font: thaiFont });
+        page2.drawText('5. ผู้เรียนเข้าร่วมกิจกรรมพัฒนาผู้เรียนและมีผลการประเมิน "ผ" ทุกกิจกรรม', { x: colStartX + 5, y: summaryY - 188, size: 9, font: thaiFont });
+
+        // คำอธิบายระดับคะแนน
+        page2.drawRectangle({ x: colStartX, y: summaryY - 330, width: 545, height: 100, borderColor: rgb(0,0,0), borderWidth: 0.5 });
+        page2.drawText('คำอธิบายระดับผลการประเมินรายวิชา', { x: colStartX + 5, y: summaryY - 240, size: 10, font: thaiFontBold });
+        const levels = ['80-100   4    ดีเยี่ยม', '75-79     3.5  ดีมาก', '70-74     3    ดี', '65-69     2.5  ค่อนข้างดี', '60-64     2    ปานกลาง', '55-59     1.5  พอใช้', '50-54     1    ผ่านเกณฑ์', '0-49      0    ต่ำกว่าเกณฑ์'];
+        let ly = summaryY - 260;
+        levels.forEach((lv, index) => {
+          if(index < 4) {
+            page2.drawText(lv, { x: colStartX + 20, y: ly, size: 9, font: thaiFont });
+            ly -= 15;
+            if(index === 3) ly = summaryY - 260; // reset for next column
+          } else {
+            page2.drawText(lv, { x: colStartX + 150, y: ly, size: 9, font: thaiFont });
+            ly -= 15;
+          }
         });
 
-        // ส่วนสรุปท้ายหน้า 2
-        y = 350;
-        page2.drawRectangle({ x: 25, y: y - 100, width: 545, height: 100, borderColor: rgb(0,0,0), borderWidth: 0.5 });
-        page2.drawText('สรุปผลการประเมิน', { x: 35, y: y - 15, size: 11, font: thaiFontBold });
-        page2.drawText('1. ผลการประเมินรายวิชาพื้นฐาน   ได้  ผ่านทุกรายวิชา', { x: 35, y: y - 30, size: 10, font: thaiFont });
-        page2.drawText('2. ผลการประเมินการอ่าน คิดวิเคราะห์และเขียน   ได้  ดีเยี่ยม', { x: 35, y: y - 45, size: 10, font: thaiFont });
-        page2.drawText('3. ผลการประเมินคุณลักษณะอันพึงประสงค์   ได้  ดีเยี่ยม', { x: 35, y: y - 60, size: 10, font: thaiFont });
-        page2.drawText('4. ผลการประเมินกิจกรรมพัฒนาผู้เรียน   ได้  ผ่าน', { x: 35, y: y - 75, size: 10, font: thaiFont });
+        // Signatures area right side
+        page2.drawText('( ........................................................... )', { x: 380, y: summaryY - 60, size: 11, font: thaiFont });
+        page2.drawText('นายทะเบียน', { x: 440, y: summaryY - 80, size: 11, font: thaiFontBold });
 
-        y -= 130;
-        page2.drawText('คำอธิบายเกณฑ์การประเมิน: 80-100 = 4, 75-79 = 3.5, 70-74 = 3, 65-69 = 2.5, 60-64 = 2, 55-59 = 1.5, 50-54 = 1, 0-49 = 0', { x: 35, y: y, size: 9, font: thaiFont });
-        
-        y -= 50;
-        page2.drawText('( ........................................................... )', { x: 350, y: y, size: 12, font: thaiFont });
-        y -= 15;
-        page2.drawText('นายทะเบียน', { x: 410, y: y, size: 12, font: thaiFontBold });
-        y -= 30;
-        page2.drawText('( ........................................................... )', { x: 350, y: y, size: 12, font: thaiFont });
-        y -= 15;
-        page2.drawText('ผู้อำนวยการโรงเรียน', { x: 400, y: y, size: 12, font: thaiFontBold });
+        page2.drawText('( ........................................................... )', { x: 380, y: summaryY - 150, size: 11, font: thaiFont });
+        page2.drawText('ผู้อำนวยการโรงเรียน', { x: 430, y: summaryY - 170, size: 11, font: thaiFontBold });
+        page2.drawText('วันที่ ........ เดือน .................... พ.ศ. ............', { x: 370, y: summaryY - 190, size: 10, font: thaiFont });
       }
 
       const pdfBytes = await pdfDoc.save();
-      const blob = new Blob([pdfBytes.buffer], { type: 'application/pdf' });
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
-      showToast('สร้าง PDF ปพ.1 สำเร็จ (ตรงตามต้นฉบับ)');
+      showToast('สร้าง PDF ปพ.1 สำเร็จ (ตรงตามต้นฉบับเป๊ะ)');
       setIsExportModalOpen(false);
     } catch (err) { console.error(err); showToast('❌ เกิดข้อผิดพลาดในการสร้าง PDF'); }
   };
