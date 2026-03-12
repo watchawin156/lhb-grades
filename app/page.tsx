@@ -98,13 +98,35 @@ export default function App() {
   // ============ DERIVED DATA ============
   const rooms = useMemo(() => {
     const classesMap = new Map();
-    allData.filter(d => d.type === 'student' && d.year === Number(selectedYear)).forEach(student => {
+    const studentsByYear = allData.filter(d => d.type === 'student' && d.year === Number(selectedYear));
+    
+    studentsByYear.forEach(student => {
       if (!classesMap.has(student.class_level)) {
-        classesMap.set(student.class_level, { class_level: student.class_level, count: 0 });
+        classesMap.set(student.class_level, { class_level: student.class_level, count: 0, studentCodes: [] });
       }
       classesMap.get(student.class_level).count++;
+      classesMap.get(student.class_level).studentCodes.push(student.student_code);
     });
-    return Array.from(classesMap.values());
+
+    const roomList = Array.from(classesMap.values());
+
+    // Check completion for each room
+    return roomList.map(room => {
+      const roomSubjects = allData.filter(d => d.type === 'subject' && d.class_level === room.class_level && d.year === Number(selectedYear));
+      
+      let isComplete = false;
+      if (roomSubjects.length > 0 && room.studentCodes.length > 0) {
+        isComplete = roomSubjects.every(subj => {
+          return room.studentCodes.every((stCode: string) => {
+            const hasSem1 = allData.some(d => d.type === 'score' && d.student_code === stCode && d.subject_code === subj.subject_code && d.semester === 1 && d.year === Number(selectedYear));
+            const hasSem2 = allData.some(d => d.type === 'score' && d.student_code === stCode && d.subject_code === subj.subject_code && d.semester === 2 && d.year === Number(selectedYear));
+            return hasSem1 && hasSem2;
+          });
+        });
+      }
+
+      return { ...room, isComplete };
+    });
   }, [allData, selectedYear]);
 
   const subjects = useMemo(() => {
@@ -477,9 +499,15 @@ export default function App() {
                       </div>
                     ) : (
                       rooms.map(cls => (
-                        <button key={cls.class_level} onClick={() => handleSelectRoom(cls)} className="bg-white border-2 border-emerald-50 hover:border-emerald-400 hover:shadow-md rounded-2xl p-6 text-center transition-all group flex flex-col items-center justify-center">
-                          <div className="text-3xl font-bold text-emerald-700 group-hover:text-emerald-500 transition-colors">{cls.class_level}</div>
-                          <div className="text-sm text-emerald-600 mt-3 font-medium bg-emerald-50 px-3 py-1.5 rounded-full transition-colors">นักเรียน {cls.count} คน</div>
+                        <button 
+                          key={cls.class_level} 
+                          onClick={() => handleSelectRoom(cls)} 
+                          className={`bg-white border-2 hover:shadow-md rounded-2xl p-6 text-center transition-all group flex flex-col items-center justify-center ${cls.isComplete ? 'grayscale opacity-60 border-slate-200' : 'border-emerald-50 hover:border-emerald-400'}`}
+                        >
+                          <div className={`text-3xl font-bold transition-colors ${cls.isComplete ? 'text-slate-500' : 'text-emerald-700 group-hover:text-emerald-500'}`}>{cls.class_level}</div>
+                          <div className={`text-sm mt-3 font-medium px-3 py-1.5 rounded-full transition-colors ${cls.isComplete ? 'text-slate-500 bg-slate-100' : 'text-emerald-600 bg-emerald-50'}`}>
+                            {cls.isComplete ? '✓ บันทึกครบถ้วน' : `นักเรียน ${cls.count} คน`}
+                          </div>
                         </button>
                       ))
                     )}

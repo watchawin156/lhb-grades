@@ -31,6 +31,11 @@ window.dataSdk = {
         // 1. Students
         if (cloudData.students) {
           cloudData.students.forEach(s => {
+            // Filter out Nursery/Kindergarten
+            if (s.class && (s.class.startsWith('อ.') || s.class.includes('อนุบาล'))) {
+              return;
+            }
+            
             this.idMap.students[s.code] = s.id;
             flattened.push({
               type: 'student',
