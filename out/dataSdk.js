@@ -52,30 +52,33 @@ window.dataSdk = {
         // 2. Subjects
         if (cloudData.subjects) {
           cloudData.subjects.forEach(s => {
-            this.idMap.subjects[s.subject_code] = s.id;
+            // สำคัญ: ใน D1 ใช้ 'code' และ 'name' แต่ใน FE เราใช้ 'subject_code' และ 'subject_name'
+            const sCode = s.subject_code || s.code;
+            const sName = s.subject_name || s.name;
+            const sMax = s.max_score || s.maxScore || 100;
             
-            // หากวิชามี class_level ระบุมา (จาก D1) ให้ใช้ค่านั้นเลย
+            this.idMap.subjects[sCode] = s.id;
+            
             if (s.class_level) {
               flattened.push({
                 ...s,
                 type: 'subject',
-                subject_code: s.subject_code,
-                subject_name: s.subject_name || s.name,
+                subject_code: sCode,
+                subject_name: sName,
                 class_level: s.class_level,
-                max_score: s.max_score || 100,
+                max_score: sMax,
                 year: (s.year === null || s.year === undefined) ? 0 : Number(s.year)
               });
             } else {
-              // กรณีวิชาเก่าที่ไม่มี class_level ให้แมปกับทุกชั้น (Fallback)
               const uniqueClasses = [...new Set(cloudData.students.map(st => st.class))];
               uniqueClasses.forEach(cls => {
                 flattened.push({
                   ...s,
                   type: 'subject',
-                  subject_code: s.subject_code,
-                  subject_name: s.subject_name || s.name,
+                  subject_code: sCode,
+                  subject_name: sName,
                   class_level: cls,
-                  max_score: s.max_score || 100,
+                  max_score: sMax,
                   year: (s.year === null || s.year === undefined) ? 0 : Number(s.year)
                 });
               });
@@ -87,7 +90,9 @@ window.dataSdk = {
         if (cloudData.scores) {
           cloudData.scores.forEach(s => {
             const studentCode = cloudData.students.find(st => st.id === s.studentId)?.code;
-            const subjectCode = cloudData.subjects.find(sub => sub.id === s.subjectId)?.subject_code;
+            // แมป Subject Code จาก ID (ในกรณีที่ API ส่งแค่ ID มา) หรือใช้รหัสที่แมปไว้
+            const subjectObj = cloudData.subjects.find(sub => sub.id === s.subjectId);
+            const subjectCode = subjectObj ? (subjectObj.subject_code || subjectObj.code) : null;
             const studentClass = cloudData.students.find(st => st.id === s.studentId)?.class;
 
             if (studentCode && subjectCode) {
