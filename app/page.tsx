@@ -69,8 +69,8 @@ export default function App() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedStudentForView, setSelectedStudentForView] = useState<any>(null);
-  const [pdfUrl, setPdfUrl] = useState<string>('');
-  const [reportType, setReportType] = useState<'pp1' | 'pp6'>('pp6');
+
+  const [reportsMode, setReportsMode] = useState<'pp6' | 'pp1'>('pp6');
   const [pp6Mode, setPp6Mode] = useState<'mode1' | 'mode2'>('mode1');
 
   // Subject Locking & Admin
@@ -1501,13 +1501,24 @@ export default function App() {
                           ))}
                         </select>
                       </div>
-                      <button onClick={() => {
-                        setIsViewModalOpen(true);
-                        if (students.length > 0) setSelectedStudentForView(students[0]);
-                      }} className="px-5 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2 whitespace-nowrap active:scale-95">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                        ตรวจสอบ/ดูรายงาน PDF
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                          <button
+                            onClick={() => setPp6Mode('mode1')}
+                            className={`px-3 py-1.5 text-[10px] sm:text-xs font-bold rounded-md transition-all ${pp6Mode === 'mode1' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                          >ปพ.6 (เก็บ-สอบ)</button>
+                          <button
+                            onClick={() => setPp6Mode('mode2')}
+                            className={`px-3 py-1.5 text-[10px] sm:text-xs font-bold rounded-md transition-all ${pp6Mode === 'mode2' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                          >ปพ.6 (เวลาเรียน)</button>
+                        </div>
+                        <button onClick={() => exportPP6PDF(null, false, pp6Mode)} className="px-5 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2 whitespace-nowrap active:scale-95">
+                          📄 ส่งออก ปพ.6 ทั้งห้อง
+                        </button>
+                        <button onClick={() => exportPP1PDF()} className="px-5 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2 whitespace-nowrap active:scale-95">
+                          📜 ส่งออก ปพ.1 ทั้งห้อง
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -1532,11 +1543,12 @@ export default function App() {
                               </>
                             )}
                             <th className="px-2 sm:px-4 py-3 text-center text-xs sm:text-sm font-bold text-emerald-900 bg-emerald-100/50">รวม / เกรด</th>
+                            <th className="px-2 sm:px-4 py-3 text-center text-xs sm:text-sm font-bold text-emerald-900 bg-emerald-100/50">รายงาน</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-emerald-50">
                           {(!selectedSubject || students.length === 0) ? (
-                            <tr><td colSpan={scoringStyle === 'simple' ? 5 : 7} className="text-center py-16 text-emerald-500 bg-emerald-50/20 font-medium">เลือกวิชาจากด้านบนเพื่อเริ่มกรอกคะแนน</td></tr>
+                            <tr><td colSpan={scoringStyle === 'simple' ? 6 : 8} className="text-center py-16 text-emerald-500 bg-emerald-50/20 font-medium">เลือกวิชาจากด้านบนเพื่อเริ่มกรอกคะแนน</td></tr>
                           ) : students.map((student, index) => {
                             const score1 = getStudentScore(student.student_code, selectedSubject.subject_code, 1);
                             const score2 = getStudentScore(student.student_code, selectedSubject.subject_code, 2);
@@ -1632,6 +1644,21 @@ export default function App() {
                                     <span className={totalScore !== null ? 'text-emerald-800' : 'text-emerald-300'}>{totalScore !== null ? totalScore : '-'}</span>
                                     <span className="text-emerald-300 text-xs sm:text-sm font-normal">/</span>
                                     <span className={grade !== null ? (Number(grade) >= 2 ? 'text-emerald-600' : 'text-red-500') : 'text-emerald-300'}>{grade !== null ? grade : '-'}</span>
+                                  </div>
+                                </td>
+
+                                <td className="px-2 sm:px-4 py-3 text-center">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <button
+                                      onClick={() => exportPP6PDF(student, false, pp6Mode)}
+                                      className="p-1 px-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded border border-indigo-200 text-[10px] font-bold transition-all shadow-sm"
+                                      title="ส่งออก ปพ.6"
+                                    >📄 ปพ.6</button>
+                                    <button
+                                      onClick={() => exportPP1PDF(student, false)}
+                                      className="p-1 px-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded border border-blue-200 text-[10px] font-bold transition-all shadow-sm"
+                                      title="ส่งออก ปพ.1"
+                                    >📜 ปพ.1</button>
                                   </div>
                                 </td>
                               </tr>
@@ -1882,122 +1909,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal View PDF */}
-      {isViewModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-6xl h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
-            <div className="bg-emerald-800 p-4 flex justify-between items-center text-white">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-white/10 rounded-lg">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                </div>
-                <div>
-                  <h3 className="font-bold">ตรวจสอบและส่งออกรายงาน ปพ.</h3>
-                  <p className="text-xs text-emerald-100/70">โปรดเลือกนักเรียนและประเภทรายงานเพื่อดูตัวอย่าง</p>
-                </div>
-              </div>
-              <button onClick={() => setIsViewModalOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-
-            <div className="flex-1 flex overflow-hidden">
-              {/* Sidebar: Student List */}
-              <div className="w-64 border-r border-slate-100 flex flex-col bg-slate-50/50">
-                <div className="p-4 border-b border-slate-100">
-                  <div className="flex gap-1 p-1 bg-slate-200/50 rounded-lg">
-                    <button
-                      onClick={() => setReportType('pp6')}
-                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${reportType === 'pp6' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >ปพ.6</button>
-                    <button
-                      onClick={() => setReportType('pp1')}
-                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${reportType === 'pp1' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >ปพ.1</button>
-                  </div>
-                  {reportType === 'pp6' && (
-                    <div className="flex gap-1 p-1 bg-slate-200/50 rounded-lg mt-2 animate-in slide-in-from-top-2">
-                      <button
-                        onClick={() => setPp6Mode('mode1')}
-                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all ${pp6Mode === 'mode1' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                      >แสดงคะแนนเก็บ-สอบ</button>
-                      <button
-                        onClick={() => setPp6Mode('mode2')}
-                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all ${pp6Mode === 'mode2' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                      >แสดงเวลาเรียน</button>
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1 overflow-y-auto p-2">
-                  {students.map((st, i) => (
-                    <div
-                      key={st.student_code}
-                      className={`w-full p-2.5 rounded-xl mb-1 transition-all flex items-center justify-between gap-2 border border-transparent ${selectedStudentForView?.student_code === st.student_code ? 'bg-emerald-50 text-emerald-800 border-emerald-100' : 'hover:bg-white text-slate-600'}`}
-                    >
-                      <div className="flex items-center gap-3 overflow-hidden cursor-pointer flex-1" onClick={() => setSelectedStudentForView(st)}>
-                        <span className="text-xs font-bold text-emerald-300 w-4 shrink-0">{i + 1}</span>
-                        <div className="truncate">
-                          <div className="text-sm font-bold truncate">{st.student_name}</div>
-                          <div className="text-[10px] opacity-60 font-mono">{st.student_code}</div>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-1 shrink-0">
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            await exportPP6PDF(st, false, pp6Mode);
-                          }}
-                          className="p-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg shadow-sm transition-all"
-                          title="เปิด ปพ.6 ในแท็บใหม่"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                        </button>
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            await exportPP1PDF(st, false);
-                          }}
-                          className="p-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg shadow-sm transition-all"
-                          title="เปิด ปพ.1 ในแท็บใหม่"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l9-5-9-5-9 5 9 5z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" /></svg>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Main Content: Preview */}
-              <div className="flex-1 bg-slate-200/30 p-4 flex flex-col">
-                {pdfUrl ? (
-                  <iframe src={pdfUrl} className="w-full h-full rounded-xl shadow-lg border-0 bg-white" title="PDF Preview" />
-                ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-4">
-                    <div className="w-20 h-20 bg-white rounded-3xl shadow-sm flex items-center justify-center border border-slate-100">
-                      <svg className="w-10 h-10 text-emerald-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                    </div>
-                    <p className="font-bold text-sm">คลิกเลือกรายชื่อนักเรียนเพื่อดูตัวอย่าง</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-              <button
-                onClick={() => window.open(pdfUrl, '_blank')}
-                disabled={!pdfUrl}
-                className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl shadow-sm hover:bg-emerald-700 disabled:opacity-50 disabled:hover:bg-emerald-600 transition-all flex items-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                เปิดดูแยก / พิมพ์ (PDF)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Reorder Modal */}
       {isReorderModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in">
@@ -2125,50 +2036,52 @@ export default function App() {
             </div>
           </div>
         </div>
-      )}
+      )
+      }
 
       {/* Student Status Modal */}
-      {selectedStudentStatus && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
-            <h3 className="text-xl font-bold text-emerald-900 mb-1">จัดการสถานะนักเรียน</h3>
-            <p className="text-sm font-medium text-emerald-600 mb-6">{selectedStudentStatus.student_name}</p>
+      {
+        selectedStudentStatus && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+              <h3 className="text-xl font-bold text-emerald-900 mb-1">จัดการสถานะนักเรียน</h3>
+              <p className="text-sm font-medium text-emerald-600 mb-6">{selectedStudentStatus.student_name}</p>
 
-            <div className="grid grid-cols-1 gap-3">
-              <button
-                onClick={() => updateStudentStatus('ปกติ')}
-                className={`w-full px-4 py-3 text-sm rounded-xl font-bold transition-all flex items-center justify-between border-2 ${selectedStudentStatus.status === 'ปกติ' || !selectedStudentStatus.status ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-slate-100 text-slate-600 hover:border-emerald-200'}`}
-              >
-                <span>สถานะปกติ</span>
-                {(!selectedStudentStatus.status || selectedStudentStatus.status === 'ปกติ') && <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>}
-              </button>
+              <div className="grid grid-cols-1 gap-3">
+                <button
+                  onClick={() => updateStudentStatus('ปกติ')}
+                  className={`w-full px-4 py-3 text-sm rounded-xl font-bold transition-all flex items-center justify-between border-2 ${selectedStudentStatus.status === 'ปกติ' || !selectedStudentStatus.status ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-slate-100 text-slate-600 hover:border-emerald-200'}`}
+                >
+                  <span>สถานะปกติ</span>
+                  {(!selectedStudentStatus.status || selectedStudentStatus.status === 'ปกติ') && <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>}
+                </button>
+
+                <button
+                  onClick={() => updateStudentStatus('ย้ายออก')}
+                  className={`w-full px-4 py-3 text-sm rounded-xl font-bold transition-all flex items-center justify-between border-2 ${selectedStudentStatus.status === 'ย้ายออก' ? 'bg-slate-50 border-slate-500 text-slate-700' : 'bg-white border-slate-100 text-slate-600 hover:border-slate-200'}`}
+                >
+                  <span>ย้ายออก</span>
+                  {selectedStudentStatus.status === 'ย้ายออก' && <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>}
+                </button>
+
+                <button
+                  onClick={() => updateStudentStatus('ซ้ำชั้น')}
+                  className={`w-full px-4 py-3 text-sm rounded-xl font-bold transition-all flex items-center justify-between border-2 ${selectedStudentStatus.status === 'ซ้ำชั้น' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-white border-slate-100 text-slate-600 hover:border-amber-200'}`}
+                >
+                  <span>เรียนซ้ำชั้น</span>
+                  {selectedStudentStatus.status === 'ซ้ำชั้น' && <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>}
+                </button>
+              </div>
 
               <button
-                onClick={() => updateStudentStatus('ย้ายออก')}
-                className={`w-full px-4 py-3 text-sm rounded-xl font-bold transition-all flex items-center justify-between border-2 ${selectedStudentStatus.status === 'ย้ายออก' ? 'bg-slate-50 border-slate-500 text-slate-700' : 'bg-white border-slate-100 text-slate-600 hover:border-slate-200'}`}
+                onClick={() => setSelectedStudentStatus(null)}
+                className="w-full mt-6 py-2 text-slate-400 hover:text-slate-600 text-sm font-bold transition-colors underline underline-offset-4"
               >
-                <span>ย้ายออก</span>
-                {selectedStudentStatus.status === 'ย้ายออก' && <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>}
-              </button>
-
-              <button
-                onClick={() => updateStudentStatus('ซ้ำชั้น')}
-                className={`w-full px-4 py-3 text-sm rounded-xl font-bold transition-all flex items-center justify-between border-2 ${selectedStudentStatus.status === 'ซ้ำชั้น' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-white border-slate-100 text-slate-600 hover:border-amber-200'}`}
-              >
-                <span>เรียนซ้ำชั้น</span>
-                {selectedStudentStatus.status === 'ซ้ำชั้น' && <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>}
+                ปิดหน้าต่าง
               </button>
             </div>
-
-            <button
-              onClick={() => setSelectedStudentStatus(null)}
-              className="w-full mt-6 py-2 text-slate-400 hover:text-slate-600 text-sm font-bold transition-colors underline underline-offset-4"
-            >
-              ปิดหน้าต่าง
-            </button>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Toast Notification */}
       {toast.show && (
@@ -2177,6 +2090,6 @@ export default function App() {
           <span className="text-sm font-bold">{toast.message}</span>
         </div>
       )}
-    </div>
+    </div >
   );
 }
