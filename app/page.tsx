@@ -71,6 +71,7 @@ export default function App() {
   const [selectedStudentForView, setSelectedStudentForView] = useState<any>(null);
   const [pdfUrl, setPdfUrl] = useState<string>('');
   const [reportType, setReportType] = useState<'pp1' | 'pp6'>('pp6');
+  const [pp6Mode, setPp6Mode] = useState<'mode1' | 'mode2'>('mode1');
 
   // Subject Locking & Admin
   const [unlockedSubjects, setUnlockedSubjects] = useState<string[]>([]);
@@ -830,12 +831,7 @@ export default function App() {
       { name: 'ภาษาอังกฤษพื้นฐาน', codePfx: 'อ1', c13: 5, c46: 4 },
       // เพิ่มเติม
       { name: 'หน้าที่พลเมือง', codePfx: 'ส1', codeSfx: '201', c13: 1, c46: 1, stype: 'เพิ่มเติม' },
-      { name: 'การป้องกันการทุจริต', codePfx: 'ส1', codeSfx: '202', c13: 1, c46: 1, stype: 'เพิ่มเติม' },
-      // กิจกรรม
-      { name: 'แนะแนว', codePfx: 'ก1', codeSfx: '901', c13: 1, c46: 1, stype: 'กิจกรรม' },
-      { name: 'ลูกเสือ-เนตรนารี', codePfx: 'ก1', codeSfx: '902', c13: 1, c46: 1, stype: 'กิจกรรม' },
-      { name: 'กิจกรรมชุมนุม', codePfx: 'ก1', codeSfx: '903', c13: 1, c46: 1, stype: 'กิจกรรม' },
-      { name: 'กิจกรรมเพื่อสังคมและสาธารณประโยชน์', codePfx: 'ก1', codeSfx: '904', c13: 1, c46: 1, stype: 'กิจกรรม' }
+      { name: 'การป้องกันการทุจริต', codePfx: 'ส1', codeSfx: '202', c13: 1, c46: 1, stype: 'เพิ่มเติม' }
     ];
 
     let newData = [...allData];
@@ -872,7 +868,7 @@ export default function App() {
   // ============ EXPORT ============
 
   // --- รายงาน ปพ.6 (รายปี) --- รูปแบบใหม่ทั้งหมด 
-  const exportPP6PDF = async (targetStudent: any = null, returnBlob = false) => {
+  const exportPP6PDF = async (targetStudent: any = null, returnBlob = false, currentMode = 'mode1') => {
     const studentList = targetStudent ? [targetStudent] : students;
     if (!selectedRoom || subjects.length === 0 || studentList.length === 0) return showToast('ไม่มีข้อมูลให้ส่งออก');
 
@@ -929,22 +925,44 @@ export default function App() {
         const tableLeft = 80;
         const colWidthSum = 400; // ความกว้างรวม
 
-        // แบ่งคอลัมน์: รหัส/รายวิชา(280) | เวลา(ชั่วโมง)(60) | ผลการเรียน(60)
-        const c1w = 280, c2w = 60, c3w = 60;
-
         page.drawRectangle({ x: tableLeft, y: tableStartY - 30, width: colWidthSum, height: 30, borderColor: rgb(0, 0, 0), borderWidth: 0.8 });
-        page.drawLine({ start: { x: tableLeft + c1w, y: tableStartY }, end: { x: tableLeft + c1w, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
-        page.drawLine({ start: { x: tableLeft + c1w + c2w, y: tableStartY }, end: { x: tableLeft + c1w + c2w, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
 
-        drawCenteredText(page, 'รหัส/รายวิชา', tableLeft, tableStartY - 20, c1w, thaiFontBold, 12);
+        if (currentMode === 'mode1') {
+          page.drawLine({ start: { x: tableLeft + 160, y: tableStartY }, end: { x: tableLeft + 160, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          page.drawLine({ start: { x: tableLeft + 220, y: tableStartY }, end: { x: tableLeft + 220, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          page.drawLine({ start: { x: tableLeft + 280, y: tableStartY }, end: { x: tableLeft + 280, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          page.drawLine({ start: { x: tableLeft + 340, y: tableStartY }, end: { x: tableLeft + 340, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
 
-        import('@pdf-lib/fontkit').then(() => {
-          // We can't do rotated degree directly in this simple refactor without degrees(), so I'll write normally
-        });
+          page.drawLine({ start: { x: tableLeft + 160, y: tableStartY - 15 }, end: { x: tableLeft + 280, y: tableStartY - 15 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          page.drawLine({ start: { x: tableLeft + 190, y: tableStartY - 15 }, end: { x: tableLeft + 190, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          page.drawLine({ start: { x: tableLeft + 250, y: tableStartY - 15 }, end: { x: tableLeft + 250, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
 
-        drawCenteredText(page, 'เวลา', tableLeft + c1w, tableStartY - 14, c2w, thaiFontBold, 10);
-        drawCenteredText(page, '(ชั่วโมง)', tableLeft + c1w, tableStartY - 24, c2w, thaiFontBold, 9);
-        drawCenteredText(page, 'ผลการเรียน', tableLeft + c1w + c2w, tableStartY - 18, c3w, thaiFontBold, 10);
+          drawCenteredText(page, 'รหัส/รายวิชา', tableLeft, tableStartY - 20, 160, thaiFontBold, 12);
+          drawCenteredText(page, 'ภาคเรียนที่ 1', tableLeft + 160, tableStartY - 11, 60, thaiFontBold, 10);
+          drawCenteredText(page, 'ภาคเรียนที่ 2', tableLeft + 220, tableStartY - 11, 60, thaiFontBold, 10);
+
+          drawCenteredText(page, 'เก็บ', tableLeft + 160, tableStartY - 25, 30, thaiFontBold, 9);
+          drawCenteredText(page, 'สอบ', tableLeft + 190, tableStartY - 25, 30, thaiFontBold, 9);
+          drawCenteredText(page, 'เก็บ', tableLeft + 220, tableStartY - 25, 30, thaiFontBold, 9);
+          drawCenteredText(page, 'สอบ', tableLeft + 250, tableStartY - 25, 30, thaiFontBold, 9);
+
+          drawCenteredText(page, 'รวม', tableLeft + 280, tableStartY - 20, 60, thaiFontBold, 11);
+          drawCenteredText(page, 'ผลการเรียน', tableLeft + 340, tableStartY - 20, 60, thaiFontBold, 11);
+        } else {
+          page.drawLine({ start: { x: tableLeft + 160, y: tableStartY }, end: { x: tableLeft + 160, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          page.drawLine({ start: { x: tableLeft + 200, y: tableStartY }, end: { x: tableLeft + 200, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          page.drawLine({ start: { x: tableLeft + 250, y: tableStartY }, end: { x: tableLeft + 250, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          page.drawLine({ start: { x: tableLeft + 300, y: tableStartY }, end: { x: tableLeft + 300, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          page.drawLine({ start: { x: tableLeft + 350, y: tableStartY }, end: { x: tableLeft + 350, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
+
+          drawCenteredText(page, 'รหัส/รายวิชา', tableLeft, tableStartY - 20, 160, thaiFontBold, 12);
+          drawCenteredText(page, 'เวลา', tableLeft + 160, tableStartY - 14, 40, thaiFontBold, 10);
+          drawCenteredText(page, '(ชม.)', tableLeft + 160, tableStartY - 24, 40, thaiFontBold, 9);
+          drawCenteredText(page, 'ภาคเรียนที่ 1', tableLeft + 200, tableStartY - 20, 50, thaiFontBold, 10);
+          drawCenteredText(page, 'ภาคเรียนที่ 2', tableLeft + 250, tableStartY - 20, 50, thaiFontBold, 10);
+          drawCenteredText(page, 'รวม', tableLeft + 300, tableStartY - 20, 50, thaiFontBold, 11);
+          drawCenteredText(page, 'ผลการเรียน', tableLeft + 350, tableStartY - 20, 50, thaiFontBold, 11);
+        }
 
         let y = tableStartY - 30;
 
@@ -955,15 +973,43 @@ export default function App() {
         const drawRow = (subjMapData: any, isHeader = false) => {
           const rowH = 16;
           page.drawRectangle({ x: tableLeft, y: y - rowH, width: colWidthSum, height: rowH, borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
-          page.drawLine({ start: { x: tableLeft + c1w, y }, end: { x: tableLeft + c1w, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
-          page.drawLine({ start: { x: tableLeft + c1w + c2w, y }, end: { x: tableLeft + c1w + c2w, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
 
-          if (isHeader) {
-            drawLeftText(page, subjMapData, tableLeft, y - 12, thaiFontBold, 11, 4);
+          if (currentMode === 'mode1') {
+            page.drawLine({ start: { x: tableLeft + 160, y }, end: { x: tableLeft + 160, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+            page.drawLine({ start: { x: tableLeft + 190, y }, end: { x: tableLeft + 190, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+            page.drawLine({ start: { x: tableLeft + 220, y }, end: { x: tableLeft + 220, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+            page.drawLine({ start: { x: tableLeft + 250, y }, end: { x: tableLeft + 250, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+            page.drawLine({ start: { x: tableLeft + 280, y }, end: { x: tableLeft + 280, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+            page.drawLine({ start: { x: tableLeft + 340, y }, end: { x: tableLeft + 340, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+
+            if (isHeader) {
+              drawLeftText(page, subjMapData, tableLeft, y - 12, thaiFontBold, 11, 4);
+            } else {
+              drawLeftText(page, `${subjMapData.code} ${subjMapData.name}`, tableLeft, y - 11, thaiFont, 10, 4);
+              drawCenteredText(page, String(subjMapData.m1), tableLeft + 160, y - 11, 30, thaiFont, 10);
+              drawCenteredText(page, String(subjMapData.f1), tableLeft + 190, y - 11, 30, thaiFont, 10);
+              drawCenteredText(page, String(subjMapData.m2), tableLeft + 220, y - 11, 30, thaiFont, 10);
+              drawCenteredText(page, String(subjMapData.f2), tableLeft + 250, y - 11, 30, thaiFont, 10);
+              drawCenteredText(page, String(subjMapData.total), tableLeft + 280, y - 11, 60, thaiFontBold, 10);
+              drawCenteredText(page, String(subjMapData.grade), tableLeft + 340, y - 11, 60, thaiFontBold, 10);
+            }
           } else {
-            drawLeftText(page, `${subjMapData.code} ${subjMapData.name}`, tableLeft, y - 11, thaiFont, 10, 8);
-            drawCenteredText(page, String(subjMapData.hours), tableLeft + c1w, y - 11, c2w, thaiFont, 10);
-            drawCenteredText(page, String(subjMapData.grade), tableLeft + c1w + c2w, y - 11, c3w, thaiFont, 10);
+            page.drawLine({ start: { x: tableLeft + 160, y }, end: { x: tableLeft + 160, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+            page.drawLine({ start: { x: tableLeft + 200, y }, end: { x: tableLeft + 200, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+            page.drawLine({ start: { x: tableLeft + 250, y }, end: { x: tableLeft + 250, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+            page.drawLine({ start: { x: tableLeft + 300, y }, end: { x: tableLeft + 300, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+            page.drawLine({ start: { x: tableLeft + 350, y }, end: { x: tableLeft + 350, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+
+            if (isHeader) {
+              drawLeftText(page, subjMapData, tableLeft, y - 12, thaiFontBold, 11, 4);
+            } else {
+              drawLeftText(page, `${subjMapData.code} ${subjMapData.name}`, tableLeft, y - 11, thaiFont, 10, 4);
+              drawCenteredText(page, String(subjMapData.hours), tableLeft + 160, y - 11, 40, thaiFont, 10);
+              drawCenteredText(page, String(subjMapData.s1), tableLeft + 200, y - 11, 50, thaiFont, 10);
+              drawCenteredText(page, String(subjMapData.s2), tableLeft + 250, y - 11, 50, thaiFont, 10);
+              drawCenteredText(page, String(subjMapData.total), tableLeft + 300, y - 11, 50, thaiFontBold, 10);
+              drawCenteredText(page, String(subjMapData.grade), tableLeft + 350, y - 11, 50, thaiFontBold, 10);
+            }
           }
           y -= rowH;
         };
@@ -972,20 +1018,40 @@ export default function App() {
           drawRow('รายวิชาพื้นฐาน', true);
           baseSubjects.forEach(sub => {
             const s1 = getStudentScore(student.student_code, sub.subject_code, 1);
+            const m1 = getStudentScore(student.student_code, sub.subject_code, 1, null, 'mid') ?? '-';
+            const f1 = getStudentScore(student.student_code, sub.subject_code, 1, null, 'fin') ?? '-';
             const s2 = getStudentScore(student.student_code, sub.subject_code, 2);
+            const m2 = getStudentScore(student.student_code, sub.subject_code, 2, null, 'mid') ?? '-';
+            const f2 = getStudentScore(student.student_code, sub.subject_code, 2, null, 'fin') ?? '-';
             const total = s1 !== null && s2 !== null ? Number(s1) + Number(s2) : null;
             const hours = (sub.credit || 1) * 40;
-            drawRow({ code: sub.subject_code, name: sub.subject_name, hours, grade: total !== null ? calculateGrade(total) : '-' });
+            drawRow({
+              code: sub.subject_code, name: sub.subject_name, hours,
+              s1: s1 ?? '-', s2: s2 ?? '-',
+              m1, f1, m2, f2,
+              total: total !== null ? total : '-',
+              grade: total !== null ? calculateGrade(total) : '-'
+            });
           });
         }
         if (addSubjects.length > 0) {
           drawRow('รายวิชาเพิ่มเติม', true);
           addSubjects.forEach(sub => {
             const s1 = getStudentScore(student.student_code, sub.subject_code, 1);
+            const m1 = getStudentScore(student.student_code, sub.subject_code, 1, null, 'mid') ?? '-';
+            const f1 = getStudentScore(student.student_code, sub.subject_code, 1, null, 'fin') ?? '-';
             const s2 = getStudentScore(student.student_code, sub.subject_code, 2);
+            const m2 = getStudentScore(student.student_code, sub.subject_code, 2, null, 'mid') ?? '-';
+            const f2 = getStudentScore(student.student_code, sub.subject_code, 2, null, 'fin') ?? '-';
             const total = s1 !== null && s2 !== null ? Number(s1) + Number(s2) : null;
             const hours = (sub.credit || 1) * 40;
-            drawRow({ code: sub.subject_code, name: sub.subject_name, hours, grade: total !== null ? calculateGrade(total) : '-' });
+            drawRow({
+              code: sub.subject_code, name: sub.subject_name, hours,
+              s1: s1 ?? '-', s2: s2 ?? '-',
+              m1, f1, m2, f2,
+              total: total !== null ? total : '-',
+              grade: total !== null ? calculateGrade(total) : '-'
+            });
           });
         }
         if (actSubjects.length > 0) {
@@ -994,8 +1060,15 @@ export default function App() {
             const s1 = getStudentScore(student.student_code, sub.subject_code, 1);
             const s2 = getStudentScore(student.student_code, sub.subject_code, 2);
             const pass = (s1 === 'ผ' || s2 === 'ผ' || Number(s1) > 0 || Number(s2) > 0) ? 'ผ' : (s1 || s2 ? 'มผ' : '-');
+            const pass1 = s1 === 'ผ' || Number(s1) > 0 ? 'ผ' : (s1 ? 'มผ' : '-');
+            const pass2 = s2 === 'ผ' || Number(s2) > 0 ? 'ผ' : (s2 ? 'มผ' : '-');
             const hours = (sub.credit || 1) * 40;
-            drawRow({ code: sub.subject_code, name: sub.subject_name, hours, grade: pass });
+            drawRow({
+              code: sub.subject_code, name: sub.subject_name, hours,
+              s1: pass1, s2: pass2,
+              m1: '-', f1: '-', m2: '-', f2: '-',
+              total: '-', grade: pass
+            });
           });
         }
 
@@ -1710,10 +1783,10 @@ export default function App() {
             <p className="text-sm font-medium text-emerald-600 mb-6">ข้อมูลของชั้น {selectedRoom?.class_level}</p>
 
             <div className="space-y-3">
-              <button onClick={exportPP6PDF} className="w-full px-4 py-3 text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-2 border-indigo-200 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
+              <button onClick={() => exportPP6PDF(null, false, pp6Mode)} className="w-full px-4 py-3 text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-2 border-indigo-200 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
                 📄 ส่งออก ปพ.6 (รายงานรายปี)
               </button>
-              <button onClick={exportPP1PDF} className="w-full px-4 py-3 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 border-2 border-blue-200 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
+              <button onClick={() => exportPP1PDF()} className="w-full px-4 py-3 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 border-2 border-blue-200 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
                 📜 ส่งออก ปพ.1 (ใบระเบียนสะสม)
               </button>
               <button onClick={exportExcelAllSubjects} className="w-full px-4 py-3 text-sm bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2 shadow-sm">
@@ -1842,6 +1915,18 @@ export default function App() {
                       className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${reportType === 'pp1' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >ปพ.1</button>
                   </div>
+                  {reportType === 'pp6' && (
+                    <div className="flex gap-1 p-1 bg-slate-200/50 rounded-lg mt-2 animate-in slide-in-from-top-2">
+                      <button
+                        onClick={() => setPp6Mode('mode1')}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all ${pp6Mode === 'mode1' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >แสดงคะแนนเก็บ-สอบ</button>
+                      <button
+                        onClick={() => setPp6Mode('mode2')}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all ${pp6Mode === 'mode2' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >แสดงเวลาเรียน</button>
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1 overflow-y-auto p-2">
                   {students.map((st, i) => (
@@ -1850,7 +1935,7 @@ export default function App() {
                       onClick={async () => {
                         setSelectedStudentForView(st);
                         const blob = reportType === 'pp6'
-                          ? await exportPP6PDF(st, true)
+                          ? await exportPP6PDF(st, true, pp6Mode)
                           : await exportPP1PDF(st, true);
                         if (blob instanceof Blob) {
                           setPdfUrl(URL.createObjectURL(blob));
