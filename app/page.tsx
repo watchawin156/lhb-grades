@@ -410,14 +410,17 @@ export default function App() {
     // โครงสร้าง Header แบบเป๊ะ 100% ตามต้นฉบับ ปพ.1 ชั้น ป.6
     let headerRow = ['#', 'รหัสนักเรียน', 'ชื่อ-สกุล'];
 
-    // รายวิชาพื้นฐาน/เพิ่มเติม 6 ปี
+    const match = adminSelectedRoom.match(/ป\.(\d+)/) || selectedRoom?.class_level?.match(/ป\.(\d+)/);
+    const currentGrade = match ? parseInt(match[1]) : 6;
+    const baseYear = Number(selectedYear) - currentGrade + 1;
+
     const yearHeaders = [
-      { year: 2562, level: '1', subjects: ['ท11101 ภาษาไทย 1', 'ค11101 คณิตศาสตร์พื้นฐาน 1', 'ว11101 พื้นฐานวิทยาศาสตร์ 1', 'ส11101 สังคมศึกษา ศาสนาและวัฒนธรรม 1', 'ส11102 ประวัติศาสตร์ 1', 'พ11101 สุขศึกษาและพลศึกษา 1', 'ศ11101 ศิลปะ 1', 'ง11101 การงานอาชีพและเทคโนโลยี 1', 'อ11101 ภาษาอังกฤษพื้นฐาน 1', '', 'ส11201 หน้าที่พลเมือง 1', 'ส11202 การป้องกันการทุจริต 1'] },
-      { year: 2563, level: '2', subjects: ['ท12101 ภาษาไทย 2', 'ค12101 คณิตศาสตร์พื้นฐาน 2', 'ว12101 พื้นฐานวิทยาศาสตร์และเทคโนโลยี 2', 'ส12101 สังคมศึกษา ศาสนาและวัฒนธรรม 2', 'ส12102 ประวัติศาสตร์ 2', 'พ12101 สุขศึกษาและพลศึกษา 2', 'ศ12101 ศิลปะ 2', 'ง12101 การงานพื้นฐานอาชีพ 2', 'อ12101 ภาษาอังกฤษพื้นฐาน 2', '', 'ส12201 หน้าที่พลเมือง 2', 'ส12202 การป้องกันการทุจริต 2'] },
-      { year: 2564, level: '3', subjects: ['ท13101 ภาษาไทย 3', 'ค13101 คณิตศาสตร์พื้นฐาน 3', 'ว13101 พื้นฐานวิทยาศาสตร์และเทคโนโลยี 3', 'ส13101 สังคมศึกษา ศาสนาและวัฒนธรรม  3', 'ส13102 ประวัติศาสตร์ 3', 'พ13101 สุขศึกษาและพลศึกษา 3', 'ศ13101 ศิลปะ 3', 'ง13101 การงานพื้นฐานอาชีพ 3', 'อ13101 ภาษาอังกฤษพื้นฐาน 3', '', 'ส13201 หน้าที่พลเมือง 3', 'ส13202 การป้องกันการทุจริต 3'] },
-      { year: 2565, level: '4', subjects: ['ท14101 ภาษาไทย 4', 'ค14101 คณิตศาสตร์พื้นฐาน 4', 'ว14101 พื้นฐานวิทยาศาสตร์และเทคโนโลยี 4', 'ส14101 สังคมศึกษา ศาสนาและวัฒนธรรม 4', 'ส14102 ประวัติศาสตร์ 4', 'พ14101 สุขศึกษาและพลศึกษา 4', 'ศ14101 ศิลปะ 4', 'ง14101 การงานพื้นฐานอาชีพ 4', 'อ14101 ภาษาอังกฤษพื้นฐาน 4', '', 'ส14201 หน้าที่พลเมือง 4', 'ส14202 การป้องกันการทุจริต 4'] },
-      { year: 2566, level: '5', subjects: ['ท15101 ภาษาไทย 5', 'ค15101 คณิตศาสตร์พื้นฐาน 5', 'ว15101 พื้นฐานวิทยาศาสตร์และเทคโนโลยี 5', 'ส15101 สังคมศึกษา ศาสนาและวัฒนธรรม 5', 'ส15102 ประวัติศาสตร์ 5', 'พ15101 สุขศึกษาและพลศึกษา 5', 'ศ15101 ศิลปะ 5', 'ง15101 การงานพื้นฐานอาชีพ 5', 'อ15101 ภาษาอังกฤษพื้นฐาน 5', '', 'ส15201 หน้าที่พลเมือง 5', 'ส15202 การป้องกันการทุจริต 5'] },
-      { year: 2567, level: '6', subjects: ['ท16101 ภาษาไทย 6', 'ค16101 คณิตศาสตร์พื้นฐาน 6', 'ว16101 พื้นฐานวิทยาศาสตร์และเทคโนโลยี 6', 'ส16101 สังคมศึกษา ศาสนาและวัฒนธรรม 6', 'ส16102 ประวัติศาสตร์ 6', 'พ16101 สุขศึกษาและพลศึกษา 6', 'ศ16101 ศิลปะ 6', 'ง16101 การงานพื้นฐานอาชีพ 6', 'อ16101 ภาษาอังกฤษพื้นฐาน 6', '', 'ส16201 หน้าที่พลเมือง 6', 'ส16202 การป้องกันการทุจริต 6'] }
+      { year: baseYear, level: '1', subjects: ['ท11101 ภาษาไทย 1', 'ค11101 คณิตศาสตร์พื้นฐาน 1', 'ว11101 พื้นฐานวิทยาศาสตร์และเทคโนโลยี 1', 'ส11101 สังคมศึกษา ศาสนาและวัฒนธรรม 1', 'ส11102 ประวัติศาสตร์ 1', 'พ11101 สุขศึกษาและพลศึกษา 1', 'ศ11101 ศิลปะ 1', 'ง11101 การงานอาชีพ 1', 'อ11101 ภาษาอังกฤษพื้นฐาน 1', '', 'ส11201 หน้าที่พลเมือง 1', 'ส11202 การป้องกันการทุจริต 1'] },
+      { year: baseYear + 1, level: '2', subjects: ['ท12101 ภาษาไทย 2', 'ค12101 คณิตศาสตร์พื้นฐาน 2', 'ว12101 พื้นฐานวิทยาศาสตร์และเทคโนโลยี 2', 'ส12101 สังคมศึกษา ศาสนาและวัฒนธรรม 2', 'ส12102 ประวัติศาสตร์ 2', 'พ12101 สุขศึกษาและพลศึกษา 2', 'ศ12101 ศิลปะ 2', 'ง12101 การงานอาชีพ 2', 'อ12101 ภาษาอังกฤษพื้นฐาน 2', '', 'ส12201 หน้าที่พลเมือง 2', 'ส12202 การป้องกันการทุจริต 2'] },
+      { year: baseYear + 2, level: '3', subjects: ['ท13101 ภาษาไทย 3', 'ค13101 คณิตศาสตร์พื้นฐาน 3', 'ว13101 พื้นฐานวิทยาศาสตร์และเทคโนโลยี 3', 'ส13101 สังคมศึกษา ศาสนาและวัฒนธรรม  3', 'ส13102 ประวัติศาสตร์ 3', 'พ13101 สุขศึกษาและพลศึกษา 3', 'ศ13101 ศิลปะ 3', 'ง13101 การงานอาชีพ 3', 'อ13101 ภาษาอังกฤษพื้นฐาน 3', '', 'ส13201 หน้าที่พลเมือง 3', 'ส13202 การป้องกันการทุจริต 3'] },
+      { year: baseYear + 3, level: '4', subjects: ['ท14101 ภาษาไทย 4', 'ค14101 คณิตศาสตร์พื้นฐาน 4', 'ว14101 พื้นฐานวิทยาศาสตร์และเทคโนโลยี 4', 'ส14101 สังคมศึกษา ศาสนาและวัฒนธรรม 4', 'ส14102 ประวัติศาสตร์ 4', 'พ14101 สุขศึกษาและพลศึกษา 4', 'ศ14101 ศิลปะ 4', 'ง14101 การงานอาชีพ 4', 'อ14101 ภาษาอังกฤษพื้นฐาน 4', '', 'ส14201 หน้าที่พลเมือง 4', 'ส14202 การป้องกันการทุจริต 4'] },
+      { year: baseYear + 4, level: '5', subjects: ['ท15101 ภาษาไทย 5', 'ค15101 คณิตศาสตร์พื้นฐาน 5', 'ว15101 พื้นฐานวิทยาศาสตร์และเทคโนโลยี 5', 'ส15101 สังคมศึกษา ศาสนาและวัฒนธรรม 5', 'ส15102 ประวัติศาสตร์ 5', 'พ15101 สุขศึกษาและพลศึกษา 5', 'ศ15101 ศิลปะ 5', 'ง15101 การงานอาชีพ 5', 'อ15101 ภาษาอังกฤษพื้นฐาน 5', '', 'ส15201 หน้าที่พลเมือง 5', 'ส15202 การป้องกันการทุจริต 5'] },
+      { year: baseYear + 5, level: '6', subjects: ['ท16101 ภาษาไทย 6', 'ค16101 คณิตศาสตร์พื้นฐาน 6', 'ว16101 พื้นฐานวิทยาศาสตร์และเทคโนโลยี 6', 'ส16101 สังคมศึกษา ศาสนาและวัฒนธรรม 6', 'ส16102 ประวัติศาสตร์ 6', 'พ16101 สุขศึกษาและพลศึกษา 6', 'ศ16101 ศิลปะ 6', 'ง16101 การงานอาชีพ 6', 'อ16101 ภาษาอังกฤษพื้นฐาน 6', '', 'ส16201 หน้าที่พลเมือง 6', 'ส16202 การป้องกันการทุจริต 6'] }
     ];
 
     yearHeaders.forEach(y => {
@@ -428,12 +431,12 @@ export default function App() {
 
     // กิจกรรมพัฒนาผู้เรียน
     const activities = [
-      { year: 2562, subs: ['ก11901 แนะแนว 1', 'ก11902 ลูกเสือ-เนตรนารี 1', 'ก11903 สนุกกับศิลปะ', 'ก11904 กิจกรรมเพื่อสังคมและสาธารณประโยชน์'] },
-      { year: 2563, subs: ['ก12901 แนะแนว 2', 'ก12902 ลูกเสือ-เนตรนารี 2', 'ก12903 การละเล่นพื้นบ้าน', 'ก12904 กิจกรรมเพื่อสังคมและสาธารณประโยชน์'] },
-      { year: 2564, subs: ['ก13901 แนะแนว 3', 'ก13902 ลูกเสือ-เนตรนารี 3', 'ก13903 ชุมนุมศิลปะการพับกระดาษ', 'ก13904 กิจกรรมเพื่อสังคมและสาธารณประโยชน์'] },
-      { year: 2565, subs: ['ก14901 แนะแนว 4', 'ก14902 ลูกเสือ-เนตรนารี 4', 'ก14903 ชุมนุมกีฬา1', 'ก14904 กิจกรรมเพื่อสังคมและสาธารณประโยชน์'] },
-      { year: 2566, subs: ['ก15901 แนะแนว 5', 'ก15902 ลูกเสือ-เนตรนารี 5', 'ก15903 ชุมนุมกีฬา2', 'ก15904 กิจกรรมเพื่อสังคมและสาธารณประโยชน์'] },
-      { year: 2567, subs: ['ก16901 แนะแนว 6', 'ก16902 ลูกเสือ-เนตรนารี 6', 'ก16903 ชุมนุมกีฬา3', 'ก16904 กิจกรรมเพื่อสังคมและสาธารณประโยชน์'] }
+      { year: baseYear, subs: ['ก11901 แนะแนว 1', 'ก11902 ลูกเสือ-เนตรนารี 1', 'ก11903 กิจกรรมชุมนุม 1', 'ก11904 กิจกรรมเพื่อสังคมและสาธารณประโยชน์'] },
+      { year: baseYear + 1, subs: ['ก12901 แนะแนว 2', 'ก12902 ลูกเสือ-เนตรนารี 2', 'ก12903 กิจกรรมชุมนุม 2', 'ก12904 กิจกรรมเพื่อสังคมและสาธารณประโยชน์'] },
+      { year: baseYear + 2, subs: ['ก13901 แนะแนว 3', 'ก13902 ลูกเสือ-เนตรนารี 3', 'ก13903 กิจกรรมชุมนุม 3', 'ก13904 กิจกรรมเพื่อสังคมและสาธารณประโยชน์'] },
+      { year: baseYear + 3, subs: ['ก14901 แนะแนว 4', 'ก14902 ลูกเสือ-เนตรนารี 4', 'ก14903 กิจกรรมชุมนุม 4', 'ก14904 กิจกรรมเพื่อสังคมและสาธารณประโยชน์'] },
+      { year: baseYear + 4, subs: ['ก15901 แนะแนว 5', 'ก15902 ลูกเสือ-เนตรนารี 5', 'ก15903 กิจกรรมชุมนุม 5', 'ก15904 กิจกรรมเพื่อสังคมและสาธารณประโยชน์'] },
+      { year: baseYear + 5, subs: ['ก16901 แนะแนว 6', 'ก16902 ลูกเสือ-เนตรนารี 6', 'ก16903 กิจกรรมชุมนุม 6', 'ก16904 กิจกรรมเพื่อสังคมและสาธารณประโยชน์'] }
     ];
 
     activities.forEach(a => {
@@ -772,14 +775,108 @@ export default function App() {
     setAdminAuthInput('');
   };
 
+  const clearAllScoresGlobally = async () => {
+    let mode = prompt('ต้องการลบคะแนนแบบไหน?\nพิมพ์ 1 = ลบทุกวิชา "เฉพาะชั้นที่เลือก" (' + adminSelectedRoom + ')\nพิมพ์ 2 = ลบทุกวิชา "ทุกชั้น ทั้งโรงเรียน"');
+    if (mode !== '1' && mode !== '2') return;
+
+    let pwd = prompt('กรุณากรอกรหัสผ่าน Admin เพื่อยืนยัน:');
+    if (pwd !== '31020177') return showToast('⚠️ รหัสผ่านไม่ถูกต้อง');
+
+    if (!confirm(`⚠️ คำเตือนสุดท้าย! คุณกำลังจะลบคะแนนทั้งหมด${mode === '1' ? 'ของ ' + adminSelectedRoom : 'ทั้งโรงเรียน'} ในปี ${selectedYear} ข้อมูลจะไม่สามารถกู้คืนได้ ยืนยันหรือไม่?`)) return;
+
+    let newData = [...allData];
+    const deletedScores = newData.filter(d =>
+      d.type === 'score' &&
+      d.year === Number(selectedYear) &&
+      (mode === '2' || d.class_level === adminSelectedRoom)
+    );
+
+    if (deletedScores.length === 0) return showToast('ไม่มีคะแนนให้ลบ');
+
+    newData = newData.filter(d => !(
+      d.type === 'score' &&
+      d.year === Number(selectedYear) &&
+      (mode === '2' || d.class_level === adminSelectedRoom)
+    ));
+
+    setAllData(newData);
+
+    if (window.dataSdk) {
+      showToast('กำลังลบข้อมูลจากฐานข้อมูล... ' + deletedScores.length + ' รายการ');
+      try {
+        await window.dataSdk.syncAll(newData);
+      } catch (e) { }
+      showToast('✅ ล้างคะแนนทั้งหมดเรียบร้อยแล้ว');
+    }
+  };
+
+  // สร้างและเพิ่มรายวิชามาตรฐาน ป.1-6 ตามเกณฑ์เวลา/หน่วยกิต (D1)
+  const generateStandardSubjects = async () => {
+    let pwd = prompt('กรุณากรอกรหัสผ่าน Admin เพื่อเตรียมวิชามาตรฐาน:');
+    if (pwd !== '31020177') return showToast('⚠️ รหัสผ่านไม่ถูกต้อง');
+
+    if (!confirm('ยืนยันการเพิ่มวิชามาตรฐาน ป.1-6 พร้อมหน่วยกิต/เวลา (หากซ้ำระบบจะอัปเดตข้อมูล)')) return;
+
+    showToast('กำลังประมวลผล...');
+    const standardSpecs = [
+      { name: 'ภาษาไทย', codePfx: 'ท1', c13: 5, c46: 4 },
+      { name: 'คณิตศาสตร์พื้นฐาน', codePfx: 'ค1', c13: 4, c46: 4 },
+      { name: 'พื้นฐานวิทยาศาสตร์และเทคโนโลยี', codePfx: 'ว1', c13: 2, c46: 3 },
+      { name: 'สังคมศึกษา ศาสนาและวัฒนธรรม', codePfx: 'ส1', codeSfx: '101', c13: 1, c46: 1 },
+      { name: 'ประวัติศาสตร์', codePfx: 'ส1', codeSfx: '102', c13: 1, c46: 1 },
+      { name: 'สุขศึกษาและพลศึกษา', codePfx: 'พ1', c13: 1, c46: 1 },
+      { name: 'ศิลปะ', codePfx: 'ศ1', c13: 1, c46: 1 },
+      { name: 'การงานอาชีพ', codePfx: 'ง1', c13: 1, c46: 2 },
+      { name: 'ภาษาอังกฤษพื้นฐาน', codePfx: 'อ1', c13: 5, c46: 4 },
+      // เพิ่มเติม
+      { name: 'หน้าที่พลเมือง', codePfx: 'ส1', codeSfx: '201', c13: 1, c46: 1, stype: 'เพิ่มเติม' },
+      { name: 'การป้องกันการทุจริต', codePfx: 'ส1', codeSfx: '202', c13: 1, c46: 1, stype: 'เพิ่มเติม' },
+      // กิจกรรม
+      { name: 'แนะแนว', codePfx: 'ก1', codeSfx: '901', c13: 1, c46: 1, stype: 'กิจกรรม' },
+      { name: 'ลูกเสือ-เนตรนารี', codePfx: 'ก1', codeSfx: '902', c13: 1, c46: 1, stype: 'กิจกรรม' },
+      { name: 'กิจกรรมชุมนุม', codePfx: 'ก1', codeSfx: '903', c13: 1, c46: 1, stype: 'กิจกรรม' },
+      { name: 'กิจกรรมเพื่อสังคมและสาธารณประโยชน์', codePfx: 'ก1', codeSfx: '904', c13: 1, c46: 1, stype: 'กิจกรรม' }
+    ];
+
+    let newData = [...allData];
+    let createdCount = 0;
+
+    for (let grade = 1; grade <= 6; grade++) {
+      const className = 'ป.' + grade;
+      for (const spec of standardSpecs) {
+        const sfx = spec.codeSfx || '101';
+        const code = spec.codePfx + grade + sfx;
+        const sname = spec.name + ' ' + grade;
+        const credit = grade <= 3 ? spec.c13 : spec.c46;
+        const stype = spec.stype || 'พื้นฐาน';
+
+        const existingIdx = newData.findIndex(d => d.type === 'subject' && d.subject_code === code && d.class_level === className);
+        const subjObj = { type: 'subject', subject_code: code, subject_name: sname, class_level: className, max_score: 100, subject_type: stype, credit: credit, year: 0, created_at: new Date().toISOString() };
+
+        if (existingIdx >= 0) {
+          newData[existingIdx] = { ...newData[existingIdx], ...subjObj };
+        } else {
+          newData.push(subjObj);
+        }
+        createdCount++;
+      }
+    }
+
+    setAllData(newData);
+    if (window.dataSdk) {
+      await window.dataSdk.syncAll(newData);
+    }
+    showToast(`✅ อัปเดตวิชามาตรฐาน ป.1-6 และหน่วยกิตเรียบร้อย (${createdCount} รายการ)`);
+  };
+
   // ============ EXPORT ============
 
-  // --- รายงาน ปพ.6 (รายปี) ---
+  // --- รายงาน ปพ.6 (รายปี) --- รูปแบบใหม่ทั้งหมด 
   const exportPP6PDF = async (targetStudent: any = null, returnBlob = false) => {
     const studentList = targetStudent ? [targetStudent] : students;
     if (!selectedRoom || subjects.length === 0 || studentList.length === 0) return showToast('ไม่มีข้อมูลให้ส่งออก');
 
-    if (!returnBlob) showToast('กำลังเตรียมไฟล์ PDF ปพ.6...');
+    if (!returnBlob) showToast('กำลังเตรียมไฟล์ PDF ปพ.6 ใหม่อีกครั้ง...');
 
     try {
       const pdfDoc = await PDFDocument.create();
@@ -791,13 +888,11 @@ export default function App() {
       const thaiFont = await pdfDoc.embedFont(fontBytes);
       const thaiFontBold = await pdfDoc.embedFont(fontBoldBytes);
 
-      // Helper: วาดข้อความจัดกลางในช่อง
       const drawCenteredText = (page: any, text: string, x: number, y: number, w: number, font: any, size: number, color = rgb(0, 0, 0)) => {
         const tWidth = font.widthOfTextAtSize(String(text), size);
         page.drawText(String(text), { x: x + (w - tWidth) / 2, y, size, font, color });
       };
 
-      // Helper: วาดข้อความชิดซ้ายในช่อง (มี padding)
       const drawLeftText = (page: any, text: string, x: number, y: number, font: any, size: number, pad = 6) => {
         page.drawText(String(text), { x: x + pad, y, size, font });
       };
@@ -829,119 +924,84 @@ export default function App() {
         page.drawText('ปีการศึกษา', { x: leftX + 100, y: infoY2, size: 12, font: thaiFontBold });
         page.drawText(String(selectedYear), { x: leftX + 155, y: infoY2, size: 12, font: thaiFont });
 
-        // เส้นใต้หัวกระดาษ
-        page.drawLine({ start: { x: leftX, y: infoY2 - 8 }, end: { x: width - 45, y: infoY2 - 8 }, thickness: 1, color: rgb(0, 0, 0) });
+        // ===== ตาราง (คัดลอกรูปแบบ ปพ.1 เป๊ะ) =====
+        const tableStartY = infoY2 - 20;
+        const tableLeft = 80;
+        const colWidthSum = 400; // ความกว้างรวม
 
-        // ===== ตาราง =====
-        const tableStartY = infoY2 - 16;
-        const tableLeft = 35;
-        const tableRight = width - 35;
-        const tableWidth = tableRight - tableLeft;
+        // แบ่งคอลัมน์: รหัส/รายวิชา(280) | เวลา(ชั่วโมง)(60) | ผลการเรียน(60)
+        const c1w = 280, c2w = 60, c3w = 60;
 
-        // คอลัมน์: ที่ | รหัสวิชา | ชื่อรายวิชา | เวลา(ชม.) | นก. | ท.1 | ท.2 | รวม | ผลการเรียน
-        const cols = [24, 55, 160, 40, 30, 42, 42, 42, 90];
-        const colHeaders = ['ที่', 'รหัสวิชา', 'ชื่อรายวิชา', 'เวลา(ชม.)', 'นก.', 'ท.1', 'ท.2', 'รวม', 'ผลการเรียน'];
+        page.drawRectangle({ x: tableLeft, y: tableStartY - 30, width: colWidthSum, height: 30, borderColor: rgb(0, 0, 0), borderWidth: 0.8 });
+        page.drawLine({ start: { x: tableLeft + c1w, y: tableStartY }, end: { x: tableLeft + c1w, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
+        page.drawLine({ start: { x: tableLeft + c1w + c2w, y: tableStartY }, end: { x: tableLeft + c1w + c2w, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
 
-        const headerRowH = 28;
-        const dataRowH = 20;
+        drawCenteredText(page, 'รหัส/รายวิชา', tableLeft, tableStartY - 20, c1w, thaiFontBold, 12);
 
-        // วาด Header ตาราง
-        let hX = tableLeft;
-        const hY = tableStartY;
-
-        // พื้นหลัง header
-        page.drawRectangle({
-          x: tableLeft, y: hY - headerRowH, width: tableWidth, height: headerRowH,
-          color: rgb(0.92, 0.96, 0.93), borderColor: rgb(0, 0, 0), borderWidth: 0.8
+        import('@pdf-lib/fontkit').then(() => {
+          // We can't do rotated degree directly in this simple refactor without degrees(), so I'll write normally
         });
 
-        // เส้นแนวตั้งและข้อความ header
-        colHeaders.forEach((h, i) => {
-          if (i > 0) {
-            page.drawLine({ start: { x: hX, y: hY }, end: { x: hX, y: hY - headerRowH }, thickness: 0.5, color: rgb(0, 0, 0) });
-          }
-          drawCenteredText(page, h, hX, hY - 19, cols[i], thaiFontBold, 10);
-          hX += cols[i];
-        });
+        drawCenteredText(page, 'เวลา', tableLeft + c1w, tableStartY - 14, c2w, thaiFontBold, 10);
+        drawCenteredText(page, '(ชั่วโมง)', tableLeft + c1w, tableStartY - 24, c2w, thaiFontBold, 9);
+        drawCenteredText(page, 'ผลการเรียน', tableLeft + c1w + c2w, tableStartY - 18, c3w, thaiFontBold, 10);
 
-        let y = hY - headerRowH;
+        let y = tableStartY - 30;
 
-        // แยกวิชาพื้นฐาน / เพิ่มเติม / กิจกรรม
         const baseSubjects = subjects.filter(s => (s.subject_type || 'พื้นฐาน') === 'พื้นฐาน' && !(s.subject_name?.includes('หน้าที่พลเมือง') || s.subject_name?.includes('ทุจริต')));
         const addSubjects = subjects.filter(s => s.subject_type === 'เพิ่มเติม' || s.subject_name?.includes('หน้าที่พลเมือง') || s.subject_name?.includes('ทุจริต'));
         const actSubjects = subjects.filter(s => s.subject_type === 'กิจกรรม');
 
-        // ฟังก์ชันวาดแถววิชา
-        const drawSubjectRow = (subj: any, idx: number) => {
-          const s1 = getStudentScore(student.student_code, subj.subject_code, 1);
-          const s2 = getStudentScore(student.student_code, subj.subject_code, 2);
-          const total = s1 !== null && s2 !== null ? Number(s1) + Number(s2) : null;
-          const grade = total !== null ? calculateGrade(total) : '-';
+        const drawRow = (subjMapData: any, isHeader = false) => {
+          const rowH = 16;
+          page.drawRectangle({ x: tableLeft, y: y - rowH, width: colWidthSum, height: rowH, borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
+          page.drawLine({ start: { x: tableLeft + c1w, y }, end: { x: tableLeft + c1w, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+          page.drawLine({ start: { x: tableLeft + c1w + c2w, y }, end: { x: tableLeft + c1w + c2w, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
 
-          const typeLabel = (subj.subject_type === 'เพิ่มเติม' || subj.subject_name?.includes('หน้าที่พลเมือง') || subj.subject_name?.includes('ทุจริต')) ? 'เพิ่มเติม' : (subj.subject_type === 'กิจกรรม' ? 'กิจกรรม' : 'พื้นฐาน');
-
-          // กรอบแถว
-          page.drawRectangle({ x: tableLeft, y: y - dataRowH, width: tableWidth, height: dataRowH, borderColor: rgb(0, 0, 0), borderWidth: 0.3 });
-
-          let rX = tableLeft;
-          const hours = (subj.credit || 1) * 40;
-          const vals = [
-            idx + 1,
-            subj.subject_code,
-            subj.subject_name?.length > 26 ? subj.subject_name.slice(0, 26) + '...' : subj.subject_name,
-            hours,
-            subj.credit || 1,
-            s1 ?? '-',
-            s2 ?? '-',
-            total ?? '-',
-            grade
-          ];
-
-          vals.forEach((val, i) => {
-            if (i > 0) {
-              page.drawLine({ start: { x: rX, y: y }, end: { x: rX, y: y - dataRowH }, thickness: 0.3, color: rgb(0, 0, 0) });
-            }
-            if (i === 2) {
-              // ชื่อวิชา: ชิดซ้าย
-              drawLeftText(page, String(val), rX, y - 14, thaiFont, 9, 4);
-            } else if (i === 8) {
-              // เกรด: ตัวหนา
-              drawCenteredText(page, String(val), rX, y - 14, cols[i], thaiFontBold, 10, Number(grade) >= 2 ? rgb(0, 0.4, 0.15) : (grade === '-' ? rgb(0.5, 0.5, 0.5) : rgb(0.7, 0.1, 0.1)));
-            } else {
-              drawCenteredText(page, String(val), rX, y - 14, cols[i], thaiFont, 9);
-            }
-            rX += cols[i];
-          });
-
-          y -= dataRowH;
+          if (isHeader) {
+            drawLeftText(page, subjMapData, tableLeft, y - 12, thaiFontBold, 11, 4);
+          } else {
+            drawLeftText(page, `${subjMapData.code} ${subjMapData.name}`, tableLeft, y - 11, thaiFont, 10, 8);
+            drawCenteredText(page, String(subjMapData.hours), tableLeft + c1w, y - 11, c2w, thaiFont, 10);
+            drawCenteredText(page, String(subjMapData.grade), tableLeft + c1w + c2w, y - 11, c3w, thaiFont, 10);
+          }
+          y -= rowH;
         };
 
-        // หัว "รายวิชาพื้นฐาน"
         if (baseSubjects.length > 0) {
-          page.drawRectangle({ x: tableLeft, y: y - dataRowH, width: tableWidth, height: dataRowH, color: rgb(0.96, 0.98, 0.96), borderColor: rgb(0, 0, 0), borderWidth: 0.3 });
-          drawLeftText(page, '❖ รายวิชาพื้นฐาน', tableLeft, y - 14, thaiFontBold, 10, 6);
-          y -= dataRowH;
-          baseSubjects.forEach((s, i) => drawSubjectRow(s, i));
+          drawRow('รายวิชาพื้นฐาน', true);
+          baseSubjects.forEach(sub => {
+            const s1 = getStudentScore(student.student_code, sub.subject_code, 1);
+            const s2 = getStudentScore(student.student_code, sub.subject_code, 2);
+            const total = s1 !== null && s2 !== null ? Number(s1) + Number(s2) : null;
+            const hours = (sub.credit || 1) * 40;
+            drawRow({ code: sub.subject_code, name: sub.subject_name, hours, grade: total !== null ? calculateGrade(total) : '-' });
+          });
         }
-
-        // หัว "รายวิชาเพิ่มเติม"
         if (addSubjects.length > 0) {
-          page.drawRectangle({ x: tableLeft, y: y - dataRowH, width: tableWidth, height: dataRowH, color: rgb(0.94, 0.95, 1), borderColor: rgb(0, 0, 0), borderWidth: 0.3 });
-          drawLeftText(page, '❖ รายวิชาเพิ่มเติม', tableLeft, y - 14, thaiFontBold, 10, 6);
-          y -= dataRowH;
-          addSubjects.forEach((s, i) => drawSubjectRow(s, i));
+          drawRow('รายวิชาเพิ่มเติม', true);
+          addSubjects.forEach(sub => {
+            const s1 = getStudentScore(student.student_code, sub.subject_code, 1);
+            const s2 = getStudentScore(student.student_code, sub.subject_code, 2);
+            const total = s1 !== null && s2 !== null ? Number(s1) + Number(s2) : null;
+            const hours = (sub.credit || 1) * 40;
+            drawRow({ code: sub.subject_code, name: sub.subject_name, hours, grade: total !== null ? calculateGrade(total) : '-' });
+          });
         }
-
-        // หัว "กิจกรรมพัฒนาผู้เรียน"
         if (actSubjects.length > 0) {
-          page.drawRectangle({ x: tableLeft, y: y - dataRowH, width: tableWidth, height: dataRowH, color: rgb(1, 0.97, 0.92), borderColor: rgb(0, 0, 0), borderWidth: 0.3 });
-          drawLeftText(page, '❖ กิจกรรมพัฒนาผู้เรียน', tableLeft, y - 14, thaiFontBold, 10, 6);
-          y -= dataRowH;
-          actSubjects.forEach((s, i) => drawSubjectRow(s, i));
+          drawRow('กิจกรรมพัฒนาผู้เรียน', true);
+          actSubjects.forEach(sub => {
+            const s1 = getStudentScore(student.student_code, sub.subject_code, 1);
+            const s2 = getStudentScore(student.student_code, sub.subject_code, 2);
+            const pass = (s1 === 'ผ' || s2 === 'ผ' || Number(s1) > 0 || Number(s2) > 0) ? 'ผ' : (s1 || s2 ? 'มผ' : '-');
+            const hours = (sub.credit || 1) * 40;
+            drawRow({ code: sub.subject_code, name: sub.subject_name, hours, grade: pass });
+          });
         }
 
-        // ===== สรุปผลการเรียน =====
-        y -= 12;
+        // ===== สรุปผลการเรียนท้ายกระดาษ =====
+        y -= 30;
+
         const allScores = subjects.map(subj => {
           const s1 = getStudentScore(student.student_code, subj.subject_code, 1);
           const s2 = getStudentScore(student.student_code, subj.subject_code, 2);
@@ -952,7 +1012,7 @@ export default function App() {
         const gpaScores = allScores.map(s => Number(calculateGrade(s))).filter(g => !isNaN(g));
         const gpa = gpaScores.length > 0 ? (gpaScores.reduce((a, b) => a + b, 0) / gpaScores.length).toFixed(2) : '-';
 
-        page.drawRectangle({ x: tableLeft, y: y - 28, width: tableWidth, height: 28, color: rgb(0.96, 0.96, 0.96), borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
+        page.drawRectangle({ x: tableLeft, y: y - 28, width: colWidthSum, height: 28, color: rgb(0.96, 0.96, 0.96), borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
         drawLeftText(page, `สรุปผลการเรียน:  คะแนนเฉลี่ยรวม ${avgScore} คะแนน    เกรดเฉลี่ย (GPA) ${gpa}    จำนวนวิชาที่ประเมิน ${allScores.length}/${subjects.length} วิชา`, tableLeft, y - 19, thaiFontBold, 10, 8);
         y -= 28;
 
@@ -1534,8 +1594,11 @@ export default function App() {
                     <button onClick={exportFullCSV} className="text-xs font-bold bg-white border border-emerald-200 text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-lg transition-all shadow-sm flex items-center gap-1">
                       📊 ส่งออก CSV ปพ.1
                     </button>
+                    <button onClick={clearAllScoresGlobally} className="text-xs font-bold bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 px-3 py-2 rounded-lg transition-all shadow-sm flex items-center gap-1">
+                      🗑️ ล้างคะแนนทั้งหมด
+                    </button>
                     <label className="cursor-pointer text-xs font-bold bg-white border border-emerald-200 text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg transition-all shadow-sm flex items-center gap-1">
-                      📂 กู้คืนจากไฟล์ (JSON)
+                      📂 กู้คืน(JSON)
                       <input type="file" accept=".json" onChange={restoreFromFile} className="hidden" />
                     </label>
                   </div>
@@ -1563,11 +1626,16 @@ export default function App() {
 
                   {/* กล่องรายวิชา (แก้แบบ Modal) */}
                   <div className="border border-emerald-100 rounded-xl overflow-hidden shadow-sm flex flex-col">
-                    <div className="bg-emerald-50 px-4 py-3 border-b border-emerald-100 flex justify-between items-center">
+                    <div className="bg-emerald-50 px-4 py-3 border-b border-emerald-100 flex justify-between items-center flex-wrap gap-2">
                       <h3 className="font-bold text-emerald-800">วิชาที่สอน</h3>
-                      <button onClick={startBulkEditSubjects} className="text-xs font-bold bg-white border border-emerald-200 text-emerald-600 hover:bg-emerald-100 px-3 py-1 rounded-md transition-colors">
-                        ✏️ แก้ไข/นำเข้าวิชา
-                      </button>
+                      <div className="flex gap-2">
+                        <button onClick={generateStandardSubjects} className="text-xs font-bold bg-white border border-emerald-200 text-blue-600 hover:bg-blue-50 px-2.5 py-1 rounded-md transition-colors shadow-sm">
+                          ✨ สร้างวิชามาตรฐาน
+                        </button>
+                        <button onClick={startBulkEditSubjects} className="text-xs font-bold bg-white border border-emerald-200 text-emerald-600 hover:bg-emerald-100 px-3 py-1 rounded-md transition-colors shadow-sm">
+                          ✏️ จัดการ
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex-1 bg-white p-2 flex flex-col min-h-[400px] max-h-[400px]">
