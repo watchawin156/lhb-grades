@@ -1,0 +1,21 @@
+{
+  "routes": [
+    {
+      "routePath": "/api/data",
+      "mountPath": "/api",
+      "method": "",
+      "module": [
+        "api/data.ts:onRequest"
+      ]
+    },
+    {
+      "routePath": "/api/telegram-backup",
+      "mountPath": "/api",
+      "method": "",
+      "module": [
+        "api/telegram-backup.ts:onRequest"
+      ]
+    }
+  ],
+  "baseURL": "/"
+}

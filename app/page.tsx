@@ -899,7 +899,7 @@ export default function App() {
 
         // ===== ส่วน Header =====
         const headerY = height - 45;
-        drawCenteredText(page, 'แบบรายงานผลพัฒนาคุณภาพผู้เรียนรายบุคคล (ปพ.6)', 0, headerY, width, thaiFontBold, 18);
+        drawCenteredText(page, 'แบบรายงานผลพัฒนาคุณภาพผู้เรียนรายบุคคล (ปพ.6)', 0, headerY, width, thaiFontBold, 20);
         drawCenteredText(page, `โรงเรียน${schoolName}`, 0, headerY - 22, width, thaiFontBold, 14);
 
         // ===== ข้อมูลนักเรียน =====
@@ -1930,25 +1930,41 @@ export default function App() {
                 </div>
                 <div className="flex-1 overflow-y-auto p-2">
                   {students.map((st, i) => (
-                    <button
+                    <div
                       key={st.student_code}
-                      onClick={async () => {
-                        setSelectedStudentForView(st);
-                        const blob = reportType === 'pp6'
-                          ? await exportPP6PDF(st, true, pp6Mode)
-                          : await exportPP1PDF(st, true);
-                        if (blob instanceof Blob) {
-                          setPdfUrl(URL.createObjectURL(blob));
-                        }
-                      }}
-                      className={`w-full text-left p-2.5 rounded-xl mb-1 transition-all flex items-center gap-3 ${selectedStudentForView?.student_code === st.student_code ? 'bg-emerald-50 text-emerald-800 border-l-4 border-emerald-600' : 'hover:bg-white text-slate-600'}`}
+                      className={`w-full p-2.5 rounded-xl mb-1 transition-all flex items-center justify-between gap-2 border border-transparent ${selectedStudentForView?.student_code === st.student_code ? 'bg-emerald-50 text-emerald-800 border-emerald-100' : 'hover:bg-white text-slate-600'}`}
                     >
-                      <span className="text-xs font-bold text-emerald-300 w-4">{i + 1}</span>
-                      <div className="truncate">
-                        <div className="text-sm font-bold truncate">{st.student_name}</div>
-                        <div className="text-[10px] opacity-60 font-mono">{st.student_code}</div>
+                      <div className="flex items-center gap-3 overflow-hidden cursor-pointer flex-1" onClick={() => setSelectedStudentForView(st)}>
+                        <span className="text-xs font-bold text-emerald-300 w-4 shrink-0">{i + 1}</span>
+                        <div className="truncate">
+                          <div className="text-sm font-bold truncate">{st.student_name}</div>
+                          <div className="text-[10px] opacity-60 font-mono">{st.student_code}</div>
+                        </div>
                       </div>
-                    </button>
+
+                      <div className="flex gap-1 shrink-0">
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            await exportPP6PDF(st, false, pp6Mode);
+                          }}
+                          className="p-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg shadow-sm transition-all"
+                          title="เปิด ปพ.6 ในแท็บใหม่"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        </button>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            await exportPP1PDF(st, false);
+                          }}
+                          className="p-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg shadow-sm transition-all"
+                          title="เปิด ปพ.1 ในแท็บใหม่"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l9-5-9-5-9 5 9 5z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" /></svg>
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
