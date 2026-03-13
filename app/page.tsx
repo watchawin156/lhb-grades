@@ -84,10 +84,15 @@ export default function App() {
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
 
   // New states for User Request
-  const [scoringStyle, setScoringStyle] = useState<'simple' | 'detailed'>('simple'); // simple: 50+50, detailed: 35+15+35+15
+  const [scoringStyle, setScoringStyle] = useState<'simple' | 'detailed'>('simple');
+  const [scoreRatio, setScoreRatio] = useState<'30:20' | '35:15' | '40:10'>('35:15'); // เก็บ:สอบ ต่อเทอม
   const [isMoveAuthorized, setIsMoveAuthorized] = useState(false);
   const [editingSubjectList, setEditingSubjectList] = useState<any[]>([]);
   const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
+
+  // Derived: คำนวณ max เก็บ/สอบ จาก ratio
+  const midMax = Number(scoreRatio.split(':')[0]);
+  const finMax = Number(scoreRatio.split(':')[1]);
 
   // Student Status State
   const [selectedStudentStatus, setSelectedStudentStatus] = useState<any>(null);
@@ -270,16 +275,18 @@ export default function App() {
     const numValue = value === '' ? null : Number(value);
 
     if (subType === 'mid') {
-      if (numValue !== null && numValue > 35) return showToast('⚠️ คะแนนเก็บเต็ม 35');
+      if (numValue !== null && numValue > midMax) return showToast(`⚠️ คะแนนเก็บเต็ม ${midMax}`);
+      if (numValue !== null && numValue < 0) return;
       currentScoreObj.mid_score = numValue;
     } else if (subType === 'fin') {
-      if (numValue !== null && numValue > 15) return showToast('⚠️ คะแนนสอบเต็ม 15');
+      if (numValue !== null && numValue > finMax) return showToast(`⚠️ คะแนนสอบเต็ม ${finMax}`);
+      if (numValue !== null && numValue < 0) return;
       currentScoreObj.fin_score = numValue;
     } else {
       if (numValue !== null && numValue > 50) return showToast('⚠️ คะแนนเต็ม 50');
       if (numValue !== null && numValue < 0) return;
       currentScoreObj.score = numValue ?? 0;
-      currentScoreObj.mid_score = null; // Reset sub-scores if total is entered manually
+      currentScoreObj.mid_score = null;
       currentScoreObj.fin_score = null;
     }
 
@@ -623,24 +630,45 @@ export default function App() {
     setEditingSubjectList(newList);
   };
 
-  const saveSubjectModal = () => {
+  const saveSubjectModal = async () => {
     if (!adminSelectedRoom) return;
 
     let newData = [...allData];
-    // Remove old subjects for this room
+
+    // 1) ลบวิชาเก่าของห้องนี้ออกจาก state
+    const oldSubjects = newData.filter(d => d.type === 'subject' && d.class_level === adminSelectedRoom);
     newData = newData.filter(d => !(d.type === 'subject' && d.class_level === adminSelectedRoom));
 
-    // Add new ones
-    editingSubjectList.forEach(s => {
-      if (s.subject_code && s.subject_name) {
-        newData.push({ ...s, created_at: s.created_at || new Date().toISOString() });
+    // 2) ลบจาก SDK ด้วย
+    if (window.dataSdk) {
+      for (const old of oldSubjects) {
+        try { await window.dataSdk.delete(old.id || old._id || old.subject_code); } catch (e) { }
       }
-    });
+    }
 
-    if (window.dataSdk) window.dataSdk.syncAll(newData);
+    // 3) เพิ่มวิชาใหม่ทีละตัว
+    const validSubjects = editingSubjectList.filter(s => s.subject_code && s.subject_name);
+    for (const s of validSubjects) {
+      const subjectData = {
+        type: 'subject',
+        subject_code: s.subject_code,
+        subject_name: s.subject_name,
+        class_level: adminSelectedRoom,
+        max_score: s.max_score || 100,
+        subject_type: s.subject_type || 'พื้นฐาน',
+        credit: s.credit || 1,
+        year: s.year || 0,
+        created_at: s.created_at || new Date().toISOString()
+      };
+      newData.push(subjectData);
+      if (window.dataSdk) {
+        try { await window.dataSdk.create(subjectData); } catch (e) { }
+      }
+    }
+
     setAllData(newData);
     setIsSubjectModalOpen(false);
-    showToast('บันทึกวิชาเรียบร้อยแล้ว');
+    showToast(`✅ บันทึก ${validSubjects.length} วิชาเรียบร้อยแล้ว`);
   };
 
   const modifySubject = () => {
@@ -1258,7 +1286,7 @@ export default function App() {
 
                     <div className="w-full lg:flex-1 flex flex-col sm:flex-row gap-3 lg:items-center lg:justify-between">
                       <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-emerald-200">
-                        <span className="text-xs font-bold text-emerald-700">รูปแบบการกรอก:</span>
+                        <span className="text-xs font-bold text-emerald-700">กรอก:</span>
                         <div className="flex gap-1 p-0.5 bg-slate-100 rounded-md">
                           <button
                             onClick={() => setScoringStyle('simple')}
@@ -1267,8 +1295,19 @@ export default function App() {
                           <button
                             onClick={() => setScoringStyle('detailed')}
                             className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${scoringStyle === 'detailed' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500'}`}
-                          >35+15</button>
+                          >เก็บ+สอบ</button>
                         </div>
+                        {scoringStyle === 'detailed' && (
+                          <select
+                            value={scoreRatio}
+                            onChange={(e) => setScoreRatio(e.target.value as any)}
+                            className="px-2 py-1 text-[10px] font-bold border border-emerald-200 rounded-md bg-white text-emerald-700 outline-none cursor-pointer"
+                          >
+                            <option value="30:20">30:20</option>
+                            <option value="35:15">35:15</option>
+                            <option value="40:10">40:10</option>
+                          </select>
+                        )}
                       </div>
 
                       <div className="flex-1 max-w-md mx-2">
@@ -1308,10 +1347,10 @@ export default function App() {
                               </>
                             ) : (
                               <>
-                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">เก็บ 1 (35)</th>
-                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30 border-r border-emerald-100">สอบ 1 (15)</th>
-                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">เก็บ 2 (35)</th>
-                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">สอบ 2 (15)</th>
+                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">{`เก็บ 1 (${midMax})`}</th>
+                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30 border-r border-emerald-100">{`สอบ 1 (${finMax})`}</th>
+                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">{`เก็บ 2 (${midMax})`}</th>
+                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">{`สอบ 2 (${finMax})`}</th>
                               </>
                             )}
                             <th className="px-2 sm:px-4 py-3 text-center text-xs sm:text-sm font-bold text-emerald-900 bg-emerald-100/50">รวม / เกรด</th>
@@ -1388,22 +1427,22 @@ export default function App() {
                                 ) : (
                                   <>
                                     <td className="px-1 py-3 text-center bg-emerald-50/20">
-                                      <input type="number" value={mid1 ?? ''} min="0" max="35" placeholder="-"
+                                      <input type="number" value={mid1 ?? ''} min="0" max={midMax} placeholder="-"
                                         onChange={(e) => updateScoreRealtime(student.student_code, 1, e.target.value, 'mid')}
                                         className="w-10 sm:w-12 px-0.5 py-1 text-xs border border-slate-200 rounded text-center focus:border-emerald-500 outline-none" />
                                     </td>
                                     <td className="px-1 py-3 text-center bg-emerald-50/20 border-r border-emerald-50">
-                                      <input type="number" value={fin1 ?? ''} min="0" max="15" placeholder="-"
+                                      <input type="number" value={fin1 ?? ''} min="0" max={finMax} placeholder="-"
                                         onChange={(e) => updateScoreRealtime(student.student_code, 1, e.target.value, 'fin')}
                                         className="w-10 sm:w-12 px-0.5 py-1 text-xs border border-slate-200 rounded text-center focus:border-emerald-500 outline-none" />
                                     </td>
                                     <td className="px-1 py-3 text-center bg-emerald-50/20">
-                                      <input type="number" value={mid2 ?? ''} min="0" max="35" placeholder="-"
+                                      <input type="number" value={mid2 ?? ''} min="0" max={midMax} placeholder="-"
                                         onChange={(e) => updateScoreRealtime(student.student_code, 2, e.target.value, 'mid')}
                                         className="w-10 sm:w-12 px-0.5 py-1 text-xs border border-slate-200 rounded text-center focus:border-emerald-500 outline-none" />
                                     </td>
                                     <td className="px-1 py-3 text-center bg-emerald-50/20">
-                                      <input type="number" value={fin2 ?? ''} min="0" max="15" placeholder="-"
+                                      <input type="number" value={fin2 ?? ''} min="0" max={finMax} placeholder="-"
                                         onChange={(e) => updateScoreRealtime(student.student_code, 2, e.target.value, 'fin')}
                                         className="w-10 sm:w-12 px-0.5 py-1 text-xs border border-slate-200 rounded text-center focus:border-emerald-500 outline-none" />
                                     </td>
