@@ -83,6 +83,12 @@ export default function App() {
   const [reorderStudents, setReorderStudents] = useState<any[]>([]);
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
 
+  // New states for User Request
+  const [scoringStyle, setScoringStyle] = useState<'simple' | 'detailed'>('simple'); // simple: 50+50, detailed: 35+15+35+15
+  const [isMoveAuthorized, setIsMoveAuthorized] = useState(false);
+  const [editingSubjectList, setEditingSubjectList] = useState<any[]>([]);
+  const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
+
   // Student Status State
   const [selectedStudentStatus, setSelectedStudentStatus] = useState<any>(null);
   const longPressTimer = useRef<any>(null);
@@ -241,7 +247,7 @@ export default function App() {
     }
   };
 
-  const updateScoreRealtime = async (studentCode: string, semester: number, value: string) => {
+  const updateScoreRealtime = async (studentCode: string, semester: number, value: string, subType: 'total' | 'mid' | 'fin' = 'total') => {
     let newData = [...allData];
     const existingIndex = newData.findIndex(d =>
       d.type === 'score' && d.student_code === studentCode &&
@@ -250,32 +256,66 @@ export default function App() {
       d.year === Number(selectedYear) && d.semester === semester
     );
 
-    if (value === '' || value === null) {
+    let currentScoreObj = existingIndex >= 0 ? { ...newData[existingIndex] } : {
+      type: 'score', student_code: studentCode, subject_code: selectedSubject.subject_code,
+      subject_name: selectedSubject.subject_name, class_level: selectedRoom.class_level,
+      score: 0, mid_score: null, fin_score: null, max_score: selectedSubject.max_score, semester, year: Number(selectedYear),
+      created_at: new Date().toISOString()
+    };
+
+    // Normalize: record เก่าอาจไม่มี mid_score/fin_score (undefined) ต้องแปลงเป็น null
+    if (currentScoreObj.mid_score === undefined) currentScoreObj.mid_score = null;
+    if (currentScoreObj.fin_score === undefined) currentScoreObj.fin_score = null;
+
+    const numValue = value === '' ? null : Number(value);
+
+    if (subType === 'mid') {
+      if (numValue !== null && numValue > 35) return showToast('⚠️ คะแนนเก็บเต็ม 35');
+      currentScoreObj.mid_score = numValue;
+    } else if (subType === 'fin') {
+      if (numValue !== null && numValue > 15) return showToast('⚠️ คะแนนสอบเต็ม 15');
+      currentScoreObj.fin_score = numValue;
+    } else {
+      if (numValue !== null && numValue > 50) return showToast('⚠️ คะแนนเต็ม 50');
+      if (numValue !== null && numValue < 0) return;
+      currentScoreObj.score = numValue ?? 0;
+      currentScoreObj.mid_score = null; // Reset sub-scores if total is entered manually
+      currentScoreObj.fin_score = null;
+    }
+
+    // Recalculate total if sub-scores exist (ตรวจ null เท่านั้น เพราะ normalize แล้ว)
+    if (currentScoreObj.mid_score !== null || currentScoreObj.fin_score !== null) {
+      currentScoreObj.score = (currentScoreObj.mid_score ?? 0) + (currentScoreObj.fin_score ?? 0);
+    }
+
+    if (numValue === null && currentScoreObj.mid_score === null && currentScoreObj.fin_score === null && subType === 'total') {
       if (existingIndex >= 0) {
         newData.splice(existingIndex, 1);
         setAllData(newData);
+        // Ideally call dataSdk.delete if it exists, otherwise just sync
+        if (window.dataSdk) window.dataSdk.syncAll(newData);
       }
       return;
     }
 
-    const numValue = Number(value);
-    if (numValue > 50) return showToast('⚠️ คะแนนเต็มเทอมละ 50 เท่านั้น');
-    if (numValue < 0) return;
-
     if (existingIndex >= 0) {
-      newData[existingIndex] = { ...newData[existingIndex], score: numValue };
-      if (window.dataSdk) window.dataSdk.update(newData[existingIndex]);
+      newData[existingIndex] = currentScoreObj;
+      if (window.dataSdk) window.dataSdk.update(currentScoreObj);
     } else {
-      const newScore = {
-        type: 'score', student_code: studentCode, subject_code: selectedSubject.subject_code,
-        subject_name: selectedSubject.subject_name, class_level: selectedRoom.class_level,
-        score: numValue, max_score: selectedSubject.max_score, semester, year: Number(selectedYear),
-        created_at: new Date().toISOString()
-      };
-      newData.push(newScore);
-      if (window.dataSdk) window.dataSdk.create(newScore);
+      newData.push(currentScoreObj);
+      if (window.dataSdk) window.dataSdk.create(currentScoreObj);
     }
     setAllData(newData);
+  };
+
+  const updateStudentOrder = (studentCode: string, newOrder: string) => {
+    let newData = [...allData];
+    const idx = newData.findIndex(d => d.type === 'student' && d.student_code === studentCode && d.year === Number(selectedYear));
+    if (idx >= 0) {
+      newData[idx] = { ...newData[idx], order_index: Number(newOrder) || 0 };
+      setAllData(newData);
+      if (window.dataSdk) window.dataSdk.update(newData[idx]);
+    }
   };
 
   // ============ AUTO BACKUP ============
@@ -429,7 +469,7 @@ export default function App() {
     showToast('ส่งออก CSV ปพ.1 เป๊ะ 100% เรียบร้อยแล้ว');
   };
 
-  const getStudentScore = (studentCode: string, subjCode: string, semester: number, year: number | string | null = null) => {
+  const getStudentScore = (studentCode: string, subjCode: string, semester: number, year: number | string | null = null, subType: 'total' | 'mid' | 'fin' = 'total') => {
     const targetYear = year ? Number(year) : Number(selectedYear);
     const scoreItem = allData.find(d =>
       d.type === 'score' &&
@@ -438,7 +478,10 @@ export default function App() {
       d.year === targetYear &&
       d.semester === semester
     );
-    return scoreItem ? scoreItem.score : null;
+    if (!scoreItem) return null;
+    if (subType === 'mid') return scoreItem.mid_score;
+    if (subType === 'fin') return scoreItem.fin_score;
+    return scoreItem.score;
   };
 
   // ============ LONG PRESS STATUS ACTIONS ============
@@ -543,69 +586,60 @@ export default function App() {
   };
 
   const startBulkEditSubjects = () => {
-    // Format: รหัสวิชา (Tab) ชื่อวิชา (Tab) คะแนนเต็ม (Tab) ประเภท (Tab) ชั่วโมง
-    const text = adminSubjects.map(s => `${s.subject_code}\t${s.subject_name}\t${s.max_score || 100}\t${s.type || 'พื้นฐาน'}\t${s.credit || 1}`).join('\n');
-    setBulkSubjectText(text);
-    setIsBulkEditSubjects(true);
+    // โหลดรายวิชาปัจจุบันของห้องที่เลือกมาใส่ใน state สำหรับแก้ไข
+    setEditingSubjectList(adminSubjects.map(s => ({ ...s })));
+    setIsSubjectModalOpen(true);
   };
 
-  const loadTemplateFromD1 = () => {
-    if (!adminSelectedRoom) return;
+  const handleUpdateEditingSubject = (index: number, field: string, value: any) => {
+    const newList = [...editingSubjectList];
+    newList[index] = { ...newList[index], [field]: value };
 
-    // กรองเอาเฉพาะวิชาที่เป็น Template (year เป็น 0 หรือ null) ของชั้นที่เลือก
-    const templates = allData.filter(d =>
-      d.type === 'subject' &&
-      d.class_level === adminSelectedRoom &&
-      (!d.year || d.year === 0)
-    );
-
-    if (templates.length === 0) {
-      showToast('❌ ไม่พบเทมเพลตวิชาสากลในฐานข้อมูล');
-      return;
+    // Force Civics/Anti-Corruption to be "เพิ่มเติม"
+    const name = newList[index].subject_name || '';
+    if (name.includes('หน้าที่พลเมือง') || name.includes('การป้องกันการทุจริต') || name.includes('ต้านทุจริต')) {
+      newList[index].subject_type = 'เพิ่มเติม';
     }
 
-    const text = templates.map(s => `${s.subject_code}\t${s.subject_name}\t${s.max_score || 100}\t${s.subject_type || 'พื้นฐาน'}\t${s.credit || 1}`).join('\n');
-    setBulkSubjectText(text);
-    showToast(`📥 โหลดเทมเพลต ${templates.length} วิชาเรียบร้อย`);
+    setEditingSubjectList(newList);
   };
 
-  const saveBulkSubjects = () => {
+  const addNewSubjectRow = () => {
+    setEditingSubjectList([...editingSubjectList, {
+      type: 'subject',
+      subject_code: '',
+      subject_name: '',
+      class_level: adminSelectedRoom,
+      max_score: 100,
+      subject_type: 'พื้นฐาน',
+      credit: 1,
+      year: 0
+    }]);
+  };
+
+  const removeSubjectRow = (index: number) => {
+    const newList = [...editingSubjectList];
+    newList.splice(index, 1);
+    setEditingSubjectList(newList);
+  };
+
+  const saveSubjectModal = () => {
     if (!adminSelectedRoom) return;
-    const lines = bulkSubjectText.split('\n').map(l => l.trim()).filter(l => l);
 
     let newData = [...allData];
-    // Remove old subjects for this room (both specific year and template)
+    // Remove old subjects for this room
     newData = newData.filter(d => !(d.type === 'subject' && d.class_level === adminSelectedRoom));
 
-    lines.forEach(line => {
-      const parts = line.split('\t');
-      const code = parts[0]?.trim();
-      const name = parts[1]?.trim();
-      const maxScore = Number(parts[2]) || 100;
-      const subType = parts[3]?.trim() || 'พื้นฐาน';
-      const credit = Number(parts[4]) || 1;
-
-      if (code && name) {
-        const newSubj = {
-          type: 'subject',
-          subject_code: code,
-          subject_name: name,
-          class_level: adminSelectedRoom,
-          max_score: maxScore,
-          subject_type: subType, // พื้นฐาน / เพิ่มเติม / กิจกรรม
-          credit: credit, // จำนวนชั่วโมง หรือ หน่วยกิต
-          year: 0,
-          created_at: new Date().toISOString()
-        };
-        newData.push(newSubj);
+    // Add new ones
+    editingSubjectList.forEach(s => {
+      if (s.subject_code && s.subject_name) {
+        newData.push({ ...s, created_at: s.created_at || new Date().toISOString() });
       }
     });
 
-    // บันทึกสถานะทั้งหมดไปยังฐานข้อมูลพร้อมกัน
     if (window.dataSdk) window.dataSdk.syncAll(newData);
-
     setAllData(newData);
-    setIsBulkEditSubjects(false);
+    setIsSubjectModalOpen(false);
     showToast('บันทึกวิชาเรียบร้อยแล้ว');
   };
 
@@ -615,7 +649,7 @@ export default function App() {
 
     let newData = [...allData];
     const idx = newData.findIndex(d => d.type === 'subject' && d.subject_code === subjectAdminData.subject_code && d.class_level === (adminSelectedRoom || selectedRoom?.class_level));
-    
+
     if (idx >= 0) {
       newData[idx] = { ...newData[idx], ...subjectAdminData };
       setAllData(newData);
@@ -631,7 +665,7 @@ export default function App() {
 
     let newData = [...allData];
     let count = 0;
-    
+
     newData = newData.map(d => {
       if (d.type === 'score' && d.subject_code === subjectAdminData.subject_code && d.year === Number(selectedYear)) {
         count++;
@@ -653,7 +687,7 @@ export default function App() {
   const unlockSelectedSubject = () => {
     if (adminAuthInput !== '31020177') return showToast('⚠️ รหัสผ่านไม่ถูกต้อง');
     if (!subjectAdminData) return;
-    
+
     setUnlockedSubjects(prev => [...prev, subjectAdminData.subject_code]);
     showToast(`ปลดล็อควิชา ${subjectAdminData.subject_code} เรียบร้อย (เฉพาะเซสชั่นนี้)`);
     setIsSubjectAdminModalOpen(false);
@@ -678,70 +712,190 @@ export default function App() {
       const thaiFont = await pdfDoc.embedFont(fontBytes);
       const thaiFontBold = await pdfDoc.embedFont(fontBoldBytes);
 
+      // Helper: วาดข้อความจัดกลางในช่อง
+      const drawCenteredText = (page: any, text: string, x: number, y: number, w: number, font: any, size: number, color = rgb(0, 0, 0)) => {
+        const tWidth = font.widthOfTextAtSize(String(text), size);
+        page.drawText(String(text), { x: x + (w - tWidth) / 2, y, size, font, color });
+      };
+
+      // Helper: วาดข้อความชิดซ้ายในช่อง (มี padding)
+      const drawLeftText = (page: any, text: string, x: number, y: number, font: any, size: number, pad = 6) => {
+        page.drawText(String(text), { x: x + pad, y, size, font });
+      };
+
       for (const student of studentList) {
         const page = pdfDoc.addPage([595.28, 841.89]);
         const { width, height } = page.getSize();
-        let y = height - 60;
 
-        // Header ปพ.6
-        page.drawText('รายงานผลพัฒนาคุณภาพผู้เรียนรายบุคคล ( ปพ.6 )', { x: width / 2 - 160, y, size: 22, font: thaiFontBold });
-        y -= 35;
-        page.drawText(`โรงเรียน${schoolName}`, { x: width / 2 - 80, y, size: 18, font: thaiFontBold });
-        y -= 45;
+        // ===== ส่วน Header =====
+        const headerY = height - 45;
+        drawCenteredText(page, 'แบบรายงานผลพัฒนาคุณภาพผู้เรียนรายบุคคล (ปพ.6)', 0, headerY, width, thaiFontBold, 18);
+        drawCenteredText(page, `โรงเรียน${schoolName}`, 0, headerY - 22, width, thaiFontBold, 14);
 
-        page.drawText(`ชื่อ-นามสกุล: ${student.student_name}`, { x: 50, y, size: 16, font: thaiFontBold });
-        page.drawText(`เลขประจำตัว: ${student.student_code}`, { x: 330, y, size: 16, font: thaiFont });
-        y -= 25;
-        page.drawText(`ชั้น: ${selectedRoom.class_level}  ปีการศึกษา: ${selectedYear}`, { x: 50, y, size: 16, font: thaiFont });
-        y -= 45;
+        // ===== ข้อมูลนักเรียน =====
+        const infoY = headerY - 52;
+        const leftX = 45;
+        const rightInfoX = 340;
 
-        // ตารางคะแนนรายปี (ดีไซน์ใหม่ ตัวใหญ่)
-        const colWidths = [40, 80, 200, 50, 50, 45, 45, 45, 40];
-        const headers = ['ที่', 'รหัสวิชา', 'รายวิชา', 'ประเภท', 'นก/ชม', 'ท.1', 'ท.2', 'รวม', 'เกรด'];
+        page.drawText('ชื่อ-นามสกุล', { x: leftX, y: infoY, size: 12, font: thaiFontBold });
+        page.drawText(student.student_name, { x: leftX + 72, y: infoY, size: 12, font: thaiFont });
 
-        // Draw Header Row
-        let curX = 25;
-        const rowHeight = 30;
-        page.drawRectangle({ x: 25, y: y - rowHeight, width: 545, height: rowHeight, color: rgb(0.95, 0.95, 0.95), borderColor: rgb(0, 0, 0), borderWidth: 1.5 });
-        headers.forEach((h, i) => {
-          page.drawText(h, { x: curX + (i === 2 ? 10 : 5), y: y - 21, size: 14, font: thaiFontBold });
-          curX += colWidths[i];
+        page.drawText('เลขประจำตัว', { x: rightInfoX, y: infoY, size: 12, font: thaiFontBold });
+        page.drawText(student.student_code, { x: rightInfoX + 62, y: infoY, size: 12, font: thaiFont });
+
+        const infoY2 = infoY - 18;
+        page.drawText('ชั้น', { x: leftX, y: infoY2, size: 12, font: thaiFontBold });
+        page.drawText(selectedRoom.class_level, { x: leftX + 22, y: infoY2, size: 12, font: thaiFont });
+
+        page.drawText('ปีการศึกษา', { x: leftX + 100, y: infoY2, size: 12, font: thaiFontBold });
+        page.drawText(String(selectedYear), { x: leftX + 155, y: infoY2, size: 12, font: thaiFont });
+
+        // เส้นใต้หัวกระดาษ
+        page.drawLine({ start: { x: leftX, y: infoY2 - 8 }, end: { x: width - 45, y: infoY2 - 8 }, thickness: 1, color: rgb(0, 0, 0) });
+
+        // ===== ตาราง =====
+        const tableStartY = infoY2 - 16;
+        const tableLeft = 35;
+        const tableRight = width - 35;
+        const tableWidth = tableRight - tableLeft;
+
+        // คอลัมน์: ที่ | รหัสวิชา | ชื่อรายวิชา | ประเภท | ชม./นก. | ท.1 (50) | ท.2 (50) | รวม (100) | ผลการเรียน
+        const cols = [28, 62, 165, 38, 38, 42, 42, 42, 68];
+        const colHeaders = ['ที่', 'รหัสวิชา', 'ชื่อรายวิชา', 'ประเภท', 'ชม.', 'ท.1', 'ท.2', 'รวม', 'ผลการเรียน'];
+
+        const headerRowH = 28;
+        const dataRowH = 20;
+
+        // วาด Header ตาราง
+        let hX = tableLeft;
+        const hY = tableStartY;
+
+        // พื้นหลัง header
+        page.drawRectangle({
+          x: tableLeft, y: hY - headerRowH, width: tableWidth, height: headerRowH,
+          color: rgb(0.92, 0.96, 0.93), borderColor: rgb(0, 0, 0), borderWidth: 0.8
         });
-        y -= rowHeight;
 
-        // Draw Data Rows
-        subjects.forEach((subj, idx) => {
+        // เส้นแนวตั้งและข้อความ header
+        colHeaders.forEach((h, i) => {
+          if (i > 0) {
+            page.drawLine({ start: { x: hX, y: hY }, end: { x: hX, y: hY - headerRowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+          }
+          drawCenteredText(page, h, hX, hY - 19, cols[i], thaiFontBold, 10);
+          hX += cols[i];
+        });
+
+        let y = hY - headerRowH;
+
+        // แยกวิชาพื้นฐาน / เพิ่มเติม / กิจกรรม
+        const baseSubjects = subjects.filter(s => (s.subject_type || 'พื้นฐาน') === 'พื้นฐาน' && !(s.subject_name?.includes('หน้าที่พลเมือง') || s.subject_name?.includes('ทุจริต')));
+        const addSubjects = subjects.filter(s => s.subject_type === 'เพิ่มเติม' || s.subject_name?.includes('หน้าที่พลเมือง') || s.subject_name?.includes('ทุจริต'));
+        const actSubjects = subjects.filter(s => s.subject_type === 'กิจกรรม');
+
+        // ฟังก์ชันวาดแถววิชา
+        const drawSubjectRow = (subj: any, idx: number) => {
           const s1 = getStudentScore(student.student_code, subj.subject_code, 1);
           const s2 = getStudentScore(student.student_code, subj.subject_code, 2);
-          const total = s1 !== null && s2 !== null ? Number(s1) + Number(s2) : (s1 !== null ? Number(s1) * 2 : (s2 !== null ? Number(s2) * 2 : null));
-          const grade = total !== null ? calculateGrade(total) : '';
+          const total = s1 !== null && s2 !== null ? Number(s1) + Number(s2) : null;
+          const grade = total !== null ? calculateGrade(total) : '-';
 
-          let type = subj.subject_name.includes("เพิ่มเติม") ? "พ" : (subj.subject_name.includes("กิจกรรม") ? "ก" : "บ");
+          const typeLabel = (subj.subject_type === 'เพิ่มเติม' || subj.subject_name?.includes('หน้าที่พลเมือง') || subj.subject_name?.includes('ทุจริต')) ? 'เพิ่มเติม' : (subj.subject_type === 'กิจกรรม' ? 'กิจกรรม' : 'พื้นฐาน');
 
-          let rX = 25;
-          const rowData = [idx + 1, subj.subject_code, subj.subject_name.slice(0, 30), type, (type === 'บ' ? 80 : 40), s1 ?? '-', s2 ?? '-', total ?? '-', grade];
+          // กรอบแถว
+          page.drawRectangle({ x: tableLeft, y: y - dataRowH, width: tableWidth, height: dataRowH, borderColor: rgb(0, 0, 0), borderWidth: 0.3 });
 
-          page.drawRectangle({ x: 25, y: y - rowHeight, width: 545, height: rowHeight, borderColor: rgb(0, 0, 0), borderWidth: 1 });
-          rowData.forEach((val, i) => {
-            const fontSize = i === 2 ? 14 : 14;
-            const align = (i === 2) ? 10 : (colWidths[i] / 2 - 8);
-            page.drawText(String(val), { x: rX + align, y: y - 21, size: fontSize, font: i === 8 ? thaiFontBold : thaiFont });
-            rX += colWidths[i];
+          let rX = tableLeft;
+          const vals = [
+            idx + 1,
+            subj.subject_code,
+            subj.subject_name?.length > 28 ? subj.subject_name.slice(0, 28) + '...' : subj.subject_name,
+            typeLabel === 'พื้นฐาน' ? 'พ.ฐ.' : (typeLabel === 'เพิ่มเติม' ? 'พ.ต.' : 'ก.'),
+            subj.credit || 1,
+            s1 ?? '-',
+            s2 ?? '-',
+            total ?? '-',
+            grade
+          ];
+
+          vals.forEach((val, i) => {
+            if (i > 0) {
+              page.drawLine({ start: { x: rX, y: y }, end: { x: rX, y: y - dataRowH }, thickness: 0.3, color: rgb(0, 0, 0) });
+            }
+            if (i === 2) {
+              // ชื่อวิชา: ชิดซ้าย
+              drawLeftText(page, String(val), rX, y - 14, thaiFont, 9, 4);
+            } else if (i === 8) {
+              // เกรด: ตัวหนา
+              drawCenteredText(page, String(val), rX, y - 14, cols[i], thaiFontBold, 10, Number(grade) >= 2 ? rgb(0, 0.4, 0.15) : (grade === '-' ? rgb(0.5, 0.5, 0.5) : rgb(0.7, 0.1, 0.1)));
+            } else {
+              drawCenteredText(page, String(val), rX, y - 14, cols[i], thaiFont, 9);
+            }
+            rX += cols[i];
           });
-          y -= rowHeight;
 
-          if (y < 150) { // New page if needed
-            // จริงๆ ปพ.6 ควรจบในหน้าเดียวสำหรับประถม
-          }
+          y -= dataRowH;
+        };
+
+        // หัว "รายวิชาพื้นฐาน"
+        if (baseSubjects.length > 0) {
+          page.drawRectangle({ x: tableLeft, y: y - dataRowH, width: tableWidth, height: dataRowH, color: rgb(0.96, 0.98, 0.96), borderColor: rgb(0, 0, 0), borderWidth: 0.3 });
+          drawLeftText(page, '❖ รายวิชาพื้นฐาน', tableLeft, y - 14, thaiFontBold, 10, 6);
+          y -= dataRowH;
+          baseSubjects.forEach((s, i) => drawSubjectRow(s, i));
+        }
+
+        // หัว "รายวิชาเพิ่มเติม"
+        if (addSubjects.length > 0) {
+          page.drawRectangle({ x: tableLeft, y: y - dataRowH, width: tableWidth, height: dataRowH, color: rgb(0.94, 0.95, 1), borderColor: rgb(0, 0, 0), borderWidth: 0.3 });
+          drawLeftText(page, '❖ รายวิชาเพิ่มเติม', tableLeft, y - 14, thaiFontBold, 10, 6);
+          y -= dataRowH;
+          addSubjects.forEach((s, i) => drawSubjectRow(s, i));
+        }
+
+        // หัว "กิจกรรมพัฒนาผู้เรียน"
+        if (actSubjects.length > 0) {
+          page.drawRectangle({ x: tableLeft, y: y - dataRowH, width: tableWidth, height: dataRowH, color: rgb(1, 0.97, 0.92), borderColor: rgb(0, 0, 0), borderWidth: 0.3 });
+          drawLeftText(page, '❖ กิจกรรมพัฒนาผู้เรียน', tableLeft, y - 14, thaiFontBold, 10, 6);
+          y -= dataRowH;
+          actSubjects.forEach((s, i) => drawSubjectRow(s, i));
+        }
+
+        // ===== สรุปผลการเรียน =====
+        y -= 12;
+        const allScores = subjects.map(subj => {
+          const s1 = getStudentScore(student.student_code, subj.subject_code, 1);
+          const s2 = getStudentScore(student.student_code, subj.subject_code, 2);
+          return s1 !== null && s2 !== null ? Number(s1) + Number(s2) : null;
+        }).filter(s => s !== null) as number[];
+
+        const avgScore = allScores.length > 0 ? (allScores.reduce((a, b) => a + b, 0) / allScores.length).toFixed(2) : '-';
+        const gpaScores = allScores.map(s => Number(calculateGrade(s))).filter(g => !isNaN(g));
+        const gpa = gpaScores.length > 0 ? (gpaScores.reduce((a, b) => a + b, 0) / gpaScores.length).toFixed(2) : '-';
+
+        page.drawRectangle({ x: tableLeft, y: y - 28, width: tableWidth, height: 28, color: rgb(0.96, 0.96, 0.96), borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
+        drawLeftText(page, `สรุปผลการเรียน:  คะแนนเฉลี่ยรวม ${avgScore} คะแนน    เกรดเฉลี่ย (GPA) ${gpa}    จำนวนวิชาที่ประเมิน ${allScores.length}/${subjects.length} วิชา`, tableLeft, y - 19, thaiFontBold, 10, 8);
+        y -= 28;
+
+        // ===== ลายเซ็น =====
+        const sigY = Math.min(y - 40, 120);
+
+        // ลายเซ็น 3 ช่อง
+        const sig1X = 50;
+        const sig2X = width / 2 - 60;
+        const sig3X = width - 200;
+
+        [
+          { x: sig1X, label: 'ครูประจำชั้น' },
+          { x: sig2X, label: 'หัวหน้าวิชาการ' },
+          { x: sig3X, label: 'ผู้อำนวยการโรงเรียน' },
+        ].forEach(sig => {
+          page.drawText('( ................................................ )', { x: sig.x, y: sigY, size: 11, font: thaiFont });
+          drawCenteredText(page, sig.label, sig.x, sigY - 16, 140, thaiFontBold, 11);
         });
 
-        // Signatures (ตัวใหญ่ขึ้น)
-        y = 100;
-        page.drawText('( ........................................................... )', { x: 50, y, size: 14, font: thaiFont });
-        page.drawText('( ........................................................... )', { x: 330, y, size: 14, font: thaiFont });
-        y -= 25;
-        page.drawText('ครูประจำชั้น', { x: 120, y, size: 14, font: thaiFontBold });
-        page.drawText('ผู้อำนวยการโรงเรียน', { x: 380, y, size: 14, font: thaiFontBold });
+        // วันที่ส่งออก (ด้านล่างสุด)
+        const dateStr = new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' });
+        page.drawText(`พิมพ์เมื่อ ${dateStr}`, { x: width - 160, y: 30, size: 8, font: thaiFont, color: rgb(0.5, 0.5, 0.5) });
       }
 
       const pdfBytes = await pdfDoc.save();
@@ -948,14 +1102,14 @@ export default function App() {
         const footerY = 70;
         page1.drawText('( ........................................................... )', { x: 380, y: footerY, size: 11, font: thaiFont });
         page1.drawText('นายทะเบียน', { x: 440, y: footerY - 15, size: 11, font: thaiFontBold });
-        
+
         page1.drawText('( ........................................................... )', { x: 380, y: footerY - 45, size: 11, font: thaiFont });
         page1.drawText('ผู้อำนวยการโรงเรียน', { x: 430, y: footerY - 60, size: 11, font: thaiFontBold });
       }
 
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
-      
+
       if (returnBlob) return blob;
 
       const url = URL.createObjectURL(blob);
@@ -1102,8 +1256,22 @@ export default function App() {
 
                     <div className="w-full h-px lg:hidden bg-emerald-200"></div>
 
-                    <div className="w-full lg:flex-1 flex flex-col sm:flex-row gap-3 lg:items-center lg:justify-end">
-                      <div className="flex-1 max-w-md">
+                    <div className="w-full lg:flex-1 flex flex-col sm:flex-row gap-3 lg:items-center lg:justify-between">
+                      <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-emerald-200">
+                        <span className="text-xs font-bold text-emerald-700">รูปแบบการกรอก:</span>
+                        <div className="flex gap-1 p-0.5 bg-slate-100 rounded-md">
+                          <button
+                            onClick={() => setScoringStyle('simple')}
+                            className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${scoringStyle === 'simple' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500'}`}
+                          >50+50</button>
+                          <button
+                            onClick={() => setScoringStyle('detailed')}
+                            className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${scoringStyle === 'detailed' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500'}`}
+                          >35+15</button>
+                        </div>
+                      </div>
+
+                      <div className="flex-1 max-w-md mx-2">
                         <select
                           value={selectedSubject?.subject_code || ''}
                           onChange={(e) => handleSelectSubject(e.target.value)}
@@ -1131,26 +1299,43 @@ export default function App() {
                       <table className="w-full border-collapse">
                         <thead>
                           <tr className="border-y-2 border-emerald-100 bg-emerald-50/50">
-                            <th className="px-2 sm:px-4 py-3 text-left text-xs text-sm font-bold text-emerald-800">ที่</th>
-                            <th className="px-2 sm:px-4 py-3 text-left text-xs text-sm font-bold text-emerald-800">ชื่อ-นามสกุล</th>
-                            <th className="px-2 sm:px-4 py-3 text-center text-xs text-sm font-bold text-emerald-800">เทอม 1 (50)</th>
-                            <th className="px-2 sm:px-4 py-3 text-center text-xs text-sm font-bold text-emerald-800">เทอม 2 (50)</th>
-                            <th className="px-2 sm:px-4 py-3 text-center text-xs text-sm font-bold text-emerald-900 bg-emerald-100/50">รวม / เกรด</th>
+                            <th className="px-2 sm:px-4 py-3 text-left text-xs sm:text-sm font-bold text-emerald-800">เลขที่</th>
+                            <th className="px-2 sm:px-4 py-3 text-left text-xs sm:text-sm font-bold text-emerald-800">ชื่อ-นามสกุล</th>
+                            {scoringStyle === 'simple' ? (
+                              <>
+                                <th className="px-2 sm:px-4 py-3 text-center text-xs sm:text-sm font-bold text-emerald-800">เทอม 1 (50)</th>
+                                <th className="px-2 sm:px-4 py-3 text-center text-xs sm:text-sm font-bold text-emerald-800">เทอม 2 (50)</th>
+                              </>
+                            ) : (
+                              <>
+                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">เก็บ 1 (35)</th>
+                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30 border-r border-emerald-100">สอบ 1 (15)</th>
+                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">เก็บ 2 (35)</th>
+                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">สอบ 2 (15)</th>
+                              </>
+                            )}
+                            <th className="px-2 sm:px-4 py-3 text-center text-xs sm:text-sm font-bold text-emerald-900 bg-emerald-100/50">รวม / เกรด</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-emerald-50">
                           {(!selectedSubject || students.length === 0) ? (
-                            <tr><td colSpan={5} className="text-center py-16 text-emerald-500 bg-emerald-50/20 font-medium">เลือกวิชาจากด้านบนเพื่อเริ่มกรอกคะแนน</td></tr>
+                            <tr><td colSpan={scoringStyle === 'simple' ? 5 : 7} className="text-center py-16 text-emerald-500 bg-emerald-50/20 font-medium">เลือกวิชาจากด้านบนเพื่อเริ่มกรอกคะแนน</td></tr>
                           ) : students.map((student, index) => {
                             const score1 = getStudentScore(student.student_code, selectedSubject.subject_code, 1);
                             const score2 = getStudentScore(student.student_code, selectedSubject.subject_code, 2);
+
+                            const mid1 = getStudentScore(student.student_code, selectedSubject.subject_code, 1, null, 'mid');
+                            const fin1 = getStudentScore(student.student_code, selectedSubject.subject_code, 1, null, 'fin');
+                            const mid2 = getStudentScore(student.student_code, selectedSubject.subject_code, 2, null, 'mid');
+                            const fin2 = getStudentScore(student.student_code, selectedSubject.subject_code, 2, null, 'fin');
+
                             const totalScore = score1 !== null && score2 !== null ? Number(score1) + Number(score2) : null;
                             const grade = totalScore !== null ? calculateGrade(totalScore, 100) : null;
-                            
+
                             const isLocked = isSubjectComplete(selectedSubject.subject_code) && !unlockedSubjects.includes(selectedSubject.subject_code);
 
                             return (
-                              <tr key={student.student_code} 
+                              <tr key={student.student_code}
                                 className={`hover:bg-emerald-50/40 transition-colors ${isLocked ? 'bg-slate-50/50' : ''}`}
                                 onContextMenu={(e) => {
                                   e.preventDefault();
@@ -1160,12 +1345,13 @@ export default function App() {
                                   setIsSubjectAdminModalOpen(true);
                                 }}
                               >
-                                <td
-                                  onDoubleClick={openReorderModal}
-                                  title="ดับเบิลคลิกเพื่อจัดเรียงเลขที่"
-                                  className="px-2 sm:px-4 py-3 text-xs sm:text-sm text-emerald-600 font-bold cursor-pointer hover:bg-emerald-100 transition-colors rounded-lg"
-                                >
-                                  {index + 1}
+                                <td className="px-2 sm:px-4 py-3">
+                                  <input
+                                    type="number"
+                                    value={student.order_index ?? index + 1}
+                                    onChange={(e) => updateStudentOrder(student.student_code, e.target.value)}
+                                    className="w-10 sm:w-12 text-center text-xs sm:text-sm font-bold text-emerald-600 bg-transparent border-b border-transparent hover:border-emerald-300 focus:border-emerald-500 focus:outline-none transition-colors"
+                                  />
                                 </td>
                                 <td className={`px-2 sm:px-4 py-3 text-xs sm:text-sm transition-all select-none cursor-help ${student.status === 'ย้ายออก' ? 'opacity-40 grayscale italic' : ''}`}
                                   onMouseDown={() => handleLongPressStart(student)}
@@ -1181,26 +1367,53 @@ export default function App() {
                                   </div>
                                   <div className="text-xs text-slate-400 font-mono mt-0.5">{student.student_code}</div>
                                 </td>
-                                <td className="px-2 sm:px-4 py-3 text-center">
-                                  <input type="number" value={score1 ?? ''} min="0" max="50" placeholder="-"
-                                    data-index={index} data-semester="1"
-                                    disabled={isLocked}
-                                    onKeyDown={(e) => handleKeyDown(e, index, 1)}
-                                    onChange={(e) => updateScoreRealtime(student.student_code, 1, e.target.value)}
-                                    className={`w-16 px-2 py-1.5 text-sm font-semibold border-2 border-slate-200 rounded-md text-center focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow ${isLocked ? 'bg-slate-100 cursor-not-allowed border-dashed' : 'bg-white hover:border-emerald-300'} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`} />
-                                </td>
-                                <td className="px-2 sm:px-4 py-3 text-center">
-                                  <input type="number" value={score2 ?? ''} min="0" max="50" placeholder="-"
-                                    data-index={index} data-semester="2"
-                                    disabled={isLocked}
-                                    onKeyDown={(e) => handleKeyDown(e, index, 2)}
-                                    onChange={(e) => updateScoreRealtime(student.student_code, 2, e.target.value)}
-                                    className={`w-16 px-2 py-1.5 text-sm font-semibold border-2 border-slate-200 rounded-md text-center focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow ${isLocked ? 'bg-slate-100 cursor-not-allowed border-dashed' : 'bg-white hover:border-emerald-300'} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`} />
-                                </td>
+
+                                {scoringStyle === 'simple' ? (
+                                  <>
+                                    <td className="px-2 sm:px-4 py-3 text-center">
+                                      <input type="number" value={score1 ?? ''} min="0" max="50" placeholder="-"
+                                        disabled={isLocked}
+                                        onKeyDown={(e) => handleKeyDown(e, index, 1)}
+                                        onChange={(e) => updateScoreRealtime(student.student_code, 1, e.target.value)}
+                                        className={`w-14 sm:w-16 px-1 py-1.5 text-xs sm:text-sm font-semibold border-2 border-slate-200 rounded-md text-center focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow ${isLocked ? 'bg-slate-100 cursor-not-allowed border-dashed' : 'bg-white hover:border-emerald-300'} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`} />
+                                    </td>
+                                    <td className="px-2 sm:px-4 py-3 text-center">
+                                      <input type="number" value={score2 ?? ''} min="0" max="50" placeholder="-"
+                                        disabled={isLocked}
+                                        onKeyDown={(e) => handleKeyDown(e, index, 2)}
+                                        onChange={(e) => updateScoreRealtime(student.student_code, 2, e.target.value)}
+                                        className={`w-14 sm:w-16 px-1 py-1.5 text-xs sm:text-sm font-semibold border-2 border-slate-200 rounded-md text-center focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow ${isLocked ? 'bg-slate-100 cursor-not-allowed border-dashed' : 'bg-white hover:border-emerald-300'} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`} />
+                                    </td>
+                                  </>
+                                ) : (
+                                  <>
+                                    <td className="px-1 py-3 text-center bg-emerald-50/20">
+                                      <input type="number" value={mid1 ?? ''} min="0" max="35" placeholder="-"
+                                        onChange={(e) => updateScoreRealtime(student.student_code, 1, e.target.value, 'mid')}
+                                        className="w-10 sm:w-12 px-0.5 py-1 text-xs border border-slate-200 rounded text-center focus:border-emerald-500 outline-none" />
+                                    </td>
+                                    <td className="px-1 py-3 text-center bg-emerald-50/20 border-r border-emerald-50">
+                                      <input type="number" value={fin1 ?? ''} min="0" max="15" placeholder="-"
+                                        onChange={(e) => updateScoreRealtime(student.student_code, 1, e.target.value, 'fin')}
+                                        className="w-10 sm:w-12 px-0.5 py-1 text-xs border border-slate-200 rounded text-center focus:border-emerald-500 outline-none" />
+                                    </td>
+                                    <td className="px-1 py-3 text-center bg-emerald-50/20">
+                                      <input type="number" value={mid2 ?? ''} min="0" max="35" placeholder="-"
+                                        onChange={(e) => updateScoreRealtime(student.student_code, 2, e.target.value, 'mid')}
+                                        className="w-10 sm:w-12 px-0.5 py-1 text-xs border border-slate-200 rounded text-center focus:border-emerald-500 outline-none" />
+                                    </td>
+                                    <td className="px-1 py-3 text-center bg-emerald-50/20">
+                                      <input type="number" value={fin2 ?? ''} min="0" max="15" placeholder="-"
+                                        onChange={(e) => updateScoreRealtime(student.student_code, 2, e.target.value, 'fin')}
+                                        className="w-10 sm:w-12 px-0.5 py-1 text-xs border border-slate-200 rounded text-center focus:border-emerald-500 outline-none" />
+                                    </td>
+                                  </>
+                                )}
+
                                 <td className="px-2 sm:px-4 py-3 text-center bg-emerald-50/30">
-                                  <div className="text-base font-bold flex items-center justify-center gap-1.5">
+                                  <div className="text-sm sm:text-base font-bold flex items-center justify-center gap-1">
                                     <span className={totalScore !== null ? 'text-emerald-800' : 'text-emerald-300'}>{totalScore !== null ? totalScore : '-'}</span>
-                                    <span className="text-emerald-300 text-sm font-normal">/</span>
+                                    <span className="text-emerald-300 text-xs sm:text-sm font-normal">/</span>
                                     <span className={grade !== null ? (Number(grade) >= 2 ? 'text-emerald-600' : 'text-red-500') : 'text-emerald-300'}>{grade !== null ? grade : '-'}</span>
                                   </div>
                                 </td>
@@ -1264,57 +1477,31 @@ export default function App() {
                     </ul>
                   </div>
 
-                  {/* กล่องรายวิชา (แก้แบบ Bulk) */}
+                  {/* กล่องรายวิชา (แก้แบบ Modal) */}
                   <div className="border border-emerald-100 rounded-xl overflow-hidden shadow-sm flex flex-col">
                     <div className="bg-emerald-50 px-4 py-3 border-b border-emerald-100 flex justify-between items-center">
                       <h3 className="font-bold text-emerald-800">วิชาที่สอน</h3>
-                      {!isBulkEditSubjects ? (
-                        <button onClick={startBulkEditSubjects} className="text-xs font-bold bg-white border border-emerald-200 text-emerald-600 hover:bg-emerald-100 px-3 py-1 rounded-md transition-colors">
-                          ✏️ แก้ไขแบบกลุ่ม (นำเข้า/แก้)
-                        </button>
-                      ) : (
-                        <button onClick={saveBulkSubjects} className="text-xs font-bold bg-emerald-600 border border-emerald-600 text-white hover:bg-emerald-700 px-3 py-1 rounded-md transition-colors">
-                          💾 บันทึกวิชา
-                        </button>
-                      )}
+                      <button onClick={startBulkEditSubjects} className="text-xs font-bold bg-white border border-emerald-200 text-emerald-600 hover:bg-emerald-100 px-3 py-1 rounded-md transition-colors">
+                        ✏️ แก้ไข/นำเข้าวิชา
+                      </button>
                     </div>
 
                     <div className="flex-1 bg-white p-2 flex flex-col min-h-[400px] max-h-[400px]">
-                      {isBulkEditSubjects ? (
-                        <>
-                          <div className="flex justify-between items-center mb-2 px-2">
-                            <p className="text-[10px] text-emerald-600 font-medium">รูปแบบ: รหัสวิชา (Tab) ชื่อวิชา (Tab) คะแนน</p>
-                            <button
-                              onClick={loadTemplateFromD1}
-                              className="text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-2 py-1 rounded hover:bg-sky-100 transition-colors font-bold flex items-center gap-1"
-                            >
-                              📥 โหลดเทมเพลตจาก D1
-                            </button>
-                          </div>
-                          <textarea
-                            value={bulkSubjectText}
-                            onChange={(e) => setBulkSubjectText(e.target.value)}
-                            className="w-full flex-1 p-3 text-sm border-2 border-emerald-100 rounded-lg focus:border-emerald-400 outline-none font-mono whitespace-pre resize-none bg-slate-50"
-                            placeholder={"ท11101\tภาษาไทย\t100\nค11101\tคณิตศาสตร์\t100"}
-                          />
-                        </>
-                      ) : (
-                        <ul className="divide-y divide-emerald-50 overflow-y-auto flex-1">
-                          {adminSubjects.length > 0 ? adminSubjects.map((sb) => (
-                            <li key={sb.subject_code} className="p-2 hover:bg-emerald-50/50 rounded-lg flex flex-col">
-                              <div className="flex justify-between items-start">
-                                <span className="text-sm font-semibold text-slate-700">{sb.subject_name}</span>
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${sb.subject_type === 'เพิ่มเติม' ? 'bg-blue-100 text-blue-700' : (sb.subject_type === 'กิจกรรม' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700')}`}>
-                                  {sb.subject_type || 'พื้นฐาน'}
-                                </span>
-                              </div>
-                              <span className="text-xs text-emerald-600 mt-1">
-                                รหัส: {sb.subject_code} | คะแนนเต็ม: {sb.max_score} | {sb.credit || 1} ชม./นก.
+                      <ul className="divide-y divide-emerald-50 overflow-y-auto flex-1">
+                        {adminSubjects.length > 0 ? adminSubjects.map((sb) => (
+                          <li key={sb.subject_code} className="p-2 hover:bg-emerald-50/50 rounded-lg flex flex-col">
+                            <div className="flex justify-between items-start">
+                              <span className="text-sm font-semibold text-slate-700">{sb.subject_name}</span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${sb.subject_type === 'เพิ่มเติม' ? 'bg-blue-100 text-blue-700' : (sb.subject_type === 'กิจกรรม' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700')}`}>
+                                {sb.subject_type || 'พื้นฐาน'}
                               </span>
-                            </li>
-                          )) : <li className="p-4 text-center text-sm text-emerald-400 font-medium mt-10">ไม่มีข้อมูลวิชา</li>}
-                        </ul>
-                      )}
+                            </div>
+                            <span className="text-xs text-emerald-600 mt-1">
+                              รหัส: {sb.subject_code} | {sb.credit || 1} ชม./นก. | คะแนนเต็ม: {sb.max_score || 100}
+                            </span>
+                          </li>
+                        )) : <li className="p-4 text-center text-sm text-emerald-400 font-medium mt-10">ไม่มีข้อมูลวิชา</li>}
+                      </ul>
                     </div>
                   </div>
 
@@ -1401,12 +1588,12 @@ export default function App() {
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            
+
             <div className="p-6 space-y-4">
               <div className="bg-amber-50 rounded-xl p-3 border border-amber-100">
                 <p className="text-xs text-amber-700 font-bold mb-1 italic">🔐 ป้องกันการแก้ไขโดยไม่ตั้งใจ</p>
-                <input 
-                  type="password" 
+                <input
+                  type="password"
                   autoFocus
                   placeholder="กรอกรหัสผ่าน (Admin)"
                   value={adminAuthInput}
@@ -1419,12 +1606,23 @@ export default function App() {
                 <button onClick={unlockSelectedSubject} className="w-full py-2.5 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
                   🔓 ปลดล็อคการแก้ไขวิชานี้
                 </button>
-                
+
                 <h4 className="text-xs font-bold text-slate-400 mt-6 px-1 uppercase tracking-wider">ย้ายคะแนน (กรณีครูกรอกผิดวิชา)</h4>
-                <div className="bg-rose-50 p-3 rounded-xl border border-rose-100 space-y-2">
-                   <p className="text-[10px] text-rose-600 leading-tight">* ฟังก์ชันนี้จะย้ายคะแนน "ทั้งหมด" ของปีนี้ จากวิชานี้ไปยังรายวิชาอื่นในชั้นเดียวกัน</p>
-                   <div className="flex flex-col gap-2">
-                      <select 
+                {!isMoveAuthorized ? (
+                  <button
+                    onClick={() => {
+                      if (adminAuthInput === '31020177') setIsMoveAuthorized(true);
+                      else showToast('⚠️ รหัสผ่านไม่ถูกต้อง');
+                    }}
+                    className="w-full py-2.5 bg-rose-50 text-rose-700 border-2 border-rose-100 hover:border-rose-300 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
+                  >
+                    🔐 กดเพื่อแสดงส่วนการย้ายคะแนน
+                  </button>
+                ) : (
+                  <div className="bg-rose-50 p-3 rounded-xl border border-rose-100 space-y-2">
+                    <p className="text-[10px] text-rose-600 leading-tight">* ฟังก์ชันนี้จะย้ายคะแนน "ทั้งหมด" ของปีนี้ จากวิชานี้ไปยังรายวิชาอื่นในชั้นเดียวกัน</p>
+                    <div className="flex flex-col gap-2">
+                      <select
                         value={moveTargetCode}
                         onChange={(e) => setMoveTargetCode(e.target.value)}
                         className="w-full px-3 py-2 text-sm border-2 border-rose-200 rounded-lg outline-none bg-white focus:border-rose-500"
@@ -1439,13 +1637,14 @@ export default function App() {
                       <button onClick={moveScoresToSubject} className="w-full py-2 bg-rose-600 text-white rounded-lg font-bold text-xs hover:bg-rose-700 transition-all shadow-sm">
                         🚀 ย้ายคะแนนทั้งหมดทันที
                       </button>
-                   </div>
-                </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-            
+
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-center">
-               <p className="text-[10px] text-slate-400">ระบบรักษาความปลอดภัย ข้อมูลถูก Sync ไปยังระบบ D1 ทันที</p>
+              <p className="text-[10px] text-slate-400">ระบบรักษาความปลอดภัย ข้อมูลถูก Sync ไปยังระบบ D1 ทันที</p>
             </div>
           </div>
         </div>
@@ -1581,6 +1780,93 @@ export default function App() {
         </div>
       )}
 
+      {/* Subject Management Modal */}
+      {isSubjectModalOpen && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col" style={{ maxHeight: '85vh' }}>
+            <div className="bg-emerald-600 px-6 py-4 flex justify-between items-center rounded-t-2xl">
+              <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                จัดการรายวิชา — {adminSelectedRoom}
+              </h3>
+              <button onClick={addNewSubjectRow} className="px-4 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm font-bold transition-colors flex items-center gap-1.5">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg> เพิ่มวิชาใหม่
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4">
+              <table className="w-full text-sm border-collapse">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-emerald-50 text-emerald-800 font-bold border-b-2 border-emerald-100">
+                    <th className="p-3 text-left w-36">รหัสวิชา</th>
+                    <th className="p-3 text-left">ชื่อวิชา</th>
+                    <th className="p-3 text-center w-20">ชม./นก.</th>
+                    <th className="p-3 text-center w-32">ประเภท</th>
+                    <th className="p-3 text-center w-14">ลบ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {editingSubjectList.map((subj, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
+                      <td className="p-2">
+                        <input
+                          value={subj.subject_code}
+                          onChange={(e) => handleUpdateEditingSubject(idx, 'subject_code', e.target.value)}
+                          className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200 outline-none font-mono"
+                          placeholder="ท11101"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          value={subj.subject_name}
+                          onChange={(e) => handleUpdateEditingSubject(idx, 'subject_name', e.target.value)}
+                          className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200 outline-none"
+                          placeholder="ภาษาไทย 1"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number"
+                          value={subj.credit || ''}
+                          onChange={(e) => handleUpdateEditingSubject(idx, 'credit', Number(e.target.value) || 1)}
+                          className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:border-emerald-500 outline-none text-center"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <select
+                          value={subj.subject_type || 'พื้นฐาน'}
+                          onChange={(e) => handleUpdateEditingSubject(idx, 'subject_type', e.target.value)}
+                          className={`w-full px-2 py-1.5 text-sm border rounded-lg focus:border-emerald-500 outline-none bg-white cursor-pointer font-bold ${subj.subject_type === 'เพิ่มเติม' ? 'text-blue-600 border-blue-200' : subj.subject_type === 'กิจกรรม' ? 'text-amber-600 border-amber-200' : 'text-emerald-600 border-slate-200'}`}
+                        >
+                          <option value="พื้นฐาน">พื้นฐาน</option>
+                          <option value="เพิ่มเติม">เพิ่มเติม</option>
+                          <option value="กิจกรรม">กิจกรรม</option>
+                        </select>
+                      </td>
+                      <td className="p-2 text-center">
+                        <button onClick={() => removeSubjectRow(idx)} className="text-slate-300 hover:text-red-500 p-1 transition-colors opacity-0 group-hover:opacity-100">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {editingSubjectList.length === 0 && (
+                    <tr><td colSpan={5} className="text-center py-12 text-slate-400 font-medium">ยังไม่มีวิชา — กดปุ่ม "เพิ่มวิชาใหม่" ด้านบน</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3 rounded-b-2xl">
+              <button onClick={() => setIsSubjectModalOpen(false)} className="flex-1 py-2.5 text-slate-500 font-bold border-2 border-slate-200 rounded-xl hover:bg-white transition-colors">ยกเลิก</button>
+              <button onClick={saveSubjectModal} className="flex-1 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg> บันทึกข้อมูลทั้งหมด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Student Status Modal */}
       {selectedStudentStatus && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in">
@@ -1625,9 +1911,12 @@ export default function App() {
       )}
 
       {/* Toast Notification */}
-      <div className={`fixed bottom-4 right-4 bg-emerald-800 text-white px-5 py-3 rounded-xl shadow-lg transform transition-all duration-300 z-[60] font-bold ${toast.show ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0 pointer-events-none'}`}>
-        <span>{toast.message}</span>
-      </div>
+      {toast.show && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-2xl shadow-2xl z-[100] animate-in slide-in-from-bottom-4 flex items-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+          <span className="text-sm font-bold">{toast.message}</span>
+        </div>
+      )}
     </div>
   );
 }
