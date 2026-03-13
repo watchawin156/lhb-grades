@@ -735,6 +735,43 @@ export default function App() {
     setIsSubjectAdminModalOpen(false);
   };
 
+  const clearAllScoresForSubject = async () => {
+    if (adminAuthInput !== '31020177') return showToast('⚠️ รหัสผ่านไม่ถูกต้อง');
+    if (!subjectAdminData) return;
+
+    if (!confirm(`⚠️ ยืนยันการลบคะแนน "ทั้งหมด" ของวิชา ${subjectAdminData.subject_code} ในปีการศึกษาที่เลือก?\nข้อมูลจะหายไปถาวร ไม่สามารถกู้คืนได้!`)) return;
+
+    let newData = [...allData];
+    const deletedScores = newData.filter(d =>
+      d.type === 'score' &&
+      d.subject_code === subjectAdminData.subject_code &&
+      (d.class_level === selectedRoom?.class_level || d.class_level === adminSelectedRoom) &&
+      d.year === Number(selectedYear)
+    );
+
+    if (deletedScores.length === 0) return showToast('ไม่มีคะแนนให้ลบ');
+
+    newData = newData.filter(d => !(
+      d.type === 'score' &&
+      d.subject_code === subjectAdminData.subject_code &&
+      (d.class_level === selectedRoom?.class_level || d.class_level === adminSelectedRoom) &&
+      d.year === Number(selectedYear)
+    ));
+
+    setAllData(newData);
+
+    if (window.dataSdk) {
+      showToast('กำลังลบข้อมูลจากฐานข้อมูล...');
+      for (const s of deletedScores) {
+        try { await window.dataSdk.delete(s.id || s._id); } catch (e) { }
+      }
+      showToast('✅ ลบคะแนนทั้งหมดเรียบร้อยแล้ว');
+    }
+
+    setIsSubjectAdminModalOpen(false);
+    setAdminAuthInput('');
+  };
+
   // ============ EXPORT ============
 
   // --- รายงาน ปพ.6 (รายปี) ---
@@ -1652,6 +1689,13 @@ export default function App() {
               <div className="space-y-3 pt-2 border-t border-slate-100">
                 <button onClick={unlockSelectedSubject} className="w-full py-2.5 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
                   🔓 ปลดล็อคการแก้ไขวิชานี้
+                </button>
+
+                <button
+                  onClick={clearAllScoresForSubject}
+                  className="w-full py-2.5 bg-red-50 text-red-600 border-2 border-red-100 hover:bg-red-100 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
+                >
+                  🗑️ ลบคะแนนทั้งหมดของวิชานี้
                 </button>
 
                 <h4 className="text-xs font-bold text-slate-400 mt-6 px-1 uppercase tracking-wider">ย้ายคะแนน (กรณีครูกรอกผิดวิชา)</h4>

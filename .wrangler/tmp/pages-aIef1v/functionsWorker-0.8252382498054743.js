@@ -211,7 +211,7 @@ var onRequest2 = /* @__PURE__ */ __name(async (context) => {
   return Response.json({ error: "Method Not Allowed" }, { status: 405 });
 }, "onRequest");
 
-// ../.wrangler/tmp/pages-lXyLV9/functionsRoutes-0.6844741601908224.mjs
+// ../.wrangler/tmp/pages-aIef1v/functionsRoutes-0.9388734445430561.mjs
 var routes = [
   {
     routePath: "/api/data",
