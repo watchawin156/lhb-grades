@@ -900,25 +900,25 @@ export default function App() {
         // ===== ส่วน Header =====
         const headerY = height - 45;
         drawCenteredText(page, 'แบบรายงานผลพัฒนาคุณภาพผู้เรียนรายบุคคล (ปพ.6)', 0, headerY, width, thaiFontBold, 20);
-        drawCenteredText(page, `โรงเรียน${schoolName}`, 0, headerY - 22, width, thaiFontBold, 14);
+        drawCenteredText(page, `โรงเรียน${schoolName}`, 0, headerY - 22, width, thaiFontBold, 18);
 
         // ===== ข้อมูลนักเรียน =====
         const infoY = headerY - 52;
         const leftX = 45;
         const rightInfoX = 340;
 
-        page.drawText('ชื่อ-นามสกุล', { x: leftX, y: infoY, size: 12, font: thaiFontBold });
-        page.drawText(student.student_name, { x: leftX + 72, y: infoY, size: 12, font: thaiFont });
+        page.drawText('ชื่อ-นามสกุล', { x: leftX, y: infoY, size: 18, font: thaiFontBold });
+        page.drawText(student.student_name, { x: leftX + 72, y: infoY, size: 18, font: thaiFont });
 
-        page.drawText('เลขประจำตัว', { x: rightInfoX, y: infoY, size: 12, font: thaiFontBold });
-        page.drawText(student.student_code, { x: rightInfoX + 62, y: infoY, size: 12, font: thaiFont });
+        page.drawText('เลขประจำตัว', { x: rightInfoX, y: infoY, size: 18, font: thaiFontBold });
+        page.drawText(student.student_code, { x: rightInfoX + 62, y: infoY, size: 18, font: thaiFont });
 
         const infoY2 = infoY - 18;
-        page.drawText('ชั้น', { x: leftX, y: infoY2, size: 12, font: thaiFontBold });
-        page.drawText(selectedRoom.class_level, { x: leftX + 22, y: infoY2, size: 12, font: thaiFont });
+        page.drawText('ชั้น', { x: leftX, y: infoY2, size: 18, font: thaiFontBold });
+        page.drawText(selectedRoom.class_level, { x: leftX + 22, y: infoY2, size: 18, font: thaiFont });
 
-        page.drawText('ปีการศึกษา', { x: leftX + 100, y: infoY2, size: 12, font: thaiFontBold });
-        page.drawText(String(selectedYear), { x: leftX + 155, y: infoY2, size: 12, font: thaiFont });
+        page.drawText('ปีการศึกษา', { x: leftX + 100, y: infoY2, size: 18, font: thaiFontBold });
+        page.drawText(String(selectedYear), { x: leftX + 155, y: infoY2, size: 18, font: thaiFont });
 
         // ===== ตาราง (คัดลอกรูปแบบ ปพ.1 เป๊ะ) =====
         const tableStartY = infoY2 - 20;
