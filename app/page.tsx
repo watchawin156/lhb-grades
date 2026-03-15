@@ -869,18 +869,20 @@ export default function App() {
         const leftX = 45;
         const rightInfoX = 340;
 
-        page.drawText('ชื่อ-นามสกุล', { x: leftX, y: infoY, size: 20, font: thaiFontBold });
-        page.drawText(student.student_name, { x: leftX + 80, y: infoY, size: 20, font: thaiFont });
+        const infoFontSize = 18;
 
-        page.drawText('เลขประจำตัว', { x: rightInfoX, y: infoY, size: 20, font: thaiFontBold });
-        page.drawText(student.student_code, { x: rightInfoX + 70, y: infoY, size: 20, font: thaiFont });
+        page.drawText('ชื่อ-นามสกุล', { x: leftX, y: infoY, size: infoFontSize, font: thaiFontBold });
+        page.drawText(student.student_name, { x: leftX + 85, y: infoY, size: infoFontSize, font: thaiFont });
 
-        const infoY2 = infoY - 22;
-        page.drawText('ชั้น', { x: leftX, y: infoY2, size: 20, font: thaiFontBold });
-        page.drawText(selectedRoom.class_level, { x: leftX + 25, y: infoY2, size: 20, font: thaiFont });
+        page.drawText('เลขประจำตัว', { x: rightInfoX, y: infoY, size: infoFontSize, font: thaiFontBold });
+        page.drawText(student.student_code, { x: rightInfoX + 80, y: infoY, size: infoFontSize, font: thaiFont });
 
-        page.drawText('ปีการศึกษา', { x: leftX + 110, y: infoY2, size: 20, font: thaiFontBold });
-        page.drawText(String(selectedYear), { x: leftX + 175, y: infoY2, size: 20, font: thaiFont });
+        const infoY2 = infoY - 25;
+        page.drawText('ชั้น', { x: leftX, y: infoY2, size: infoFontSize, font: thaiFontBold });
+        page.drawText(selectedRoom.class_level, { x: leftX + 30, y: infoY2, size: infoFontSize, font: thaiFont });
+
+        page.drawText('ปีการศึกษา', { x: leftX + 110, y: infoY2, size: infoFontSize, font: thaiFontBold });
+        page.drawText(String(selectedYear), { x: leftX + 185, y: infoY2, size: infoFontSize, font: thaiFont });
 
         // ===== ตาราง (คัดลอกรูปแบบ ปพ.1 เป๊ะ) =====
         const tableStartY = infoY2 - 25;
@@ -939,7 +941,8 @@ export default function App() {
         const actSubjects = subjects.filter(s => s.subject_type === 'กิจกรรม');
 
         const drawRow = (subjMapData: any, isHeader = false) => {
-          const rowH = 22; // เพิ่มความสูงแถว
+          const rowH = 26; // เพิ่มความสูงแถว
+          const subFontSize = 16;
           page.drawRectangle({ x: tableLeft, y: y - rowH, width: colWidthSum, height: rowH, borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
 
           if (currentMode === 'mode1') {
@@ -949,16 +952,16 @@ export default function App() {
             }
 
             if (isHeader) {
-              drawLeftText(page, subjMapData, colX[0], y - 16, thaiFontBold, 13, 6);
+              drawLeftText(page, subjMapData, colX[0], y - 19, thaiFontBold, subFontSize, 6);
             } else {
-              drawLeftText(page, `${subjMapData.code} ${subjMapData.name}`, colX[0], y - 16, thaiFont, 12, 6);
-              drawCenteredText(page, String(subjMapData.hours), colX[1], y - 16, 30, thaiFont, 12);
-              drawCenteredText(page, String(subjMapData.m1), colX[2], y - 16, 40, thaiFont, 12);
-              drawCenteredText(page, String(subjMapData.f1), colX[3], y - 16, 40, thaiFont, 12);
-              drawCenteredText(page, String(subjMapData.m2), colX[4], y - 16, 40, thaiFont, 12);
-              drawCenteredText(page, String(subjMapData.f2), colX[5], y - 16, 40, thaiFont, 12);
-              drawCenteredText(page, String(subjMapData.total), colX[6], y - 16, 55, thaiFontBold, 13);
-              drawCenteredText(page, String(subjMapData.grade), colX[7], y - 16, 55, thaiFontBold, 13);
+              drawLeftText(page, `${subjMapData.code} ${subjMapData.name}`, colX[0], y - 19, thaiFont, subFontSize, 6);
+              drawCenteredText(page, String(subjMapData.hours), colX[1], y - 19, 30, thaiFont, subFontSize);
+              drawCenteredText(page, String(subjMapData.m1), colX[2], y - 19, 40, thaiFont, subFontSize);
+              drawCenteredText(page, String(subjMapData.f1), colX[3], y - 19, 40, thaiFont, subFontSize);
+              drawCenteredText(page, String(subjMapData.m2), colX[4], y - 19, 40, thaiFont, subFontSize);
+              drawCenteredText(page, String(subjMapData.f2), colX[5], y - 19, 40, thaiFont, subFontSize);
+              drawCenteredText(page, String(subjMapData.total), colX[6], y - 19, 55, thaiFontBold, subFontSize);
+              drawCenteredText(page, String(subjMapData.grade), colX[7], y - 19, 55, thaiFontBold, subFontSize);
             }
           } else {
             const colX = [0, 240, 290, 345, 400, 450, 500].map(x => tableLeft + x);
@@ -967,14 +970,14 @@ export default function App() {
             }
 
             if (isHeader) {
-              drawLeftText(page, subjMapData, colX[0], y - 16, thaiFontBold, 13, 6);
+              drawLeftText(page, subjMapData, colX[0], y - 19, thaiFontBold, subFontSize, 6);
             } else {
-              drawLeftText(page, `${subjMapData.code} ${subjMapData.name}`, colX[0], y - 16, thaiFont, 12, 6);
-              drawCenteredText(page, String(subjMapData.hours), colX[1], y - 16, 50, thaiFont, 12);
-              drawCenteredText(page, String(subjMapData.s1), colX[2], y - 16, 55, thaiFont, 12);
-              drawCenteredText(page, String(subjMapData.s2), colX[3], y - 16, 55, thaiFont, 12);
-              drawCenteredText(page, String(subjMapData.total), colX[4], y - 16, 50, thaiFontBold, 13);
-              drawCenteredText(page, String(subjMapData.grade), colX[5], y - 16, 50, thaiFontBold, 13);
+              drawLeftText(page, `${subjMapData.code} ${subjMapData.name}`, colX[0], y - 19, thaiFont, subFontSize, 6);
+              drawCenteredText(page, String(subjMapData.hours), colX[1], y - 19, 50, thaiFont, subFontSize);
+              drawCenteredText(page, String(subjMapData.s1), colX[2], y - 19, 55, thaiFont, subFontSize);
+              drawCenteredText(page, String(subjMapData.s2), colX[3], y - 19, 55, thaiFont, subFontSize);
+              drawCenteredText(page, String(subjMapData.total), colX[4], y - 19, 50, thaiFontBold, subFontSize);
+              drawCenteredText(page, String(subjMapData.grade), colX[5], y - 19, 50, thaiFontBold, subFontSize);
             }
           }
           y -= rowH;
@@ -1120,73 +1123,75 @@ export default function App() {
         const fontSize = 11;
 
         // --- Header Left ---
-        page1.drawText('โรงเรียน', { x: 30, y, size: 13, font: thaiFontBold });
-        page1.drawText(schoolName, { x: 95, y, size: 13, font: thaiFont });
-        y -= 18;
-        page1.drawText('สังกัด', { x: 30, y, size: 13, font: thaiFontBold });
-        page1.drawText('สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน', { x: 95, y, size: 13, font: thaiFont });
-        y -= 18;
-        page1.drawText('ตำบล/แขวง', { x: 30, y, size: 13, font: thaiFontBold });
-        page1.drawText('ปราสาท', { x: 95, y, size: 13, font: thaiFont });
-        y -= 18;
-        page1.drawText('เขต/อำเภอ', { x: 30, y, size: 13, font: thaiFontBold });
-        page1.drawText('บ้านกรวด', { x: 95, y, size: 13, font: thaiFont });
-        y -= 18;
-        page1.drawText('จังหวัด', { x: 30, y, size: 13, font: thaiFontBold });
-        page1.drawText('บุรีรัมย์', { x: 95, y, size: 13, font: thaiFont });
-        y -= 18;
-        page1.drawText('สำนักงานเขตพื้นที่การศึกษา', { x: 30, y, size: 13, font: thaiFontBold });
-        page1.drawText('ประถมศึกษาบุรีรัมย์ เขต 2', { x: 145, y, size: 13, font: thaiFont });
-        y -= 18;
-        page1.drawText('วันเข้าเรียน', { x: 30, y, size: 13, font: thaiFontBold });
-        page1.drawText('-', { x: 95, y, size: 13, font: thaiFont });
-        y -= 20;
-        page1.drawText('โรงเรียนเดิม', { x: 30, y, size: 13, font: thaiFontBold });
-        page1.drawText('-', { x: 95, y, size: 13, font: thaiFont });
-        y -= 20;
-        page1.drawText('จังหวัด', { x: 30, y, size: 13, font: thaiFontBold });
-        page1.drawText('-', { x: 95, y, size: 13, font: thaiFont });
-        y -= 20;
-        page1.drawText('ชั้นเรียนสุดท้าย', { x: 30, y, size: 13, font: thaiFontBold });
-        page1.drawText('-', { x: 105, y, size: 13, font: thaiFont });
+        const pp1LabelSize = 16;
+        page1.drawText('โรงเรียน', { x: 30, y, size: pp1LabelSize, font: thaiFontBold });
+        page1.drawText(schoolName, { x: 105, y, size: pp1LabelSize, font: thaiFont });
+        y -= 22;
+        page1.drawText('สังกัด', { x: 30, y, size: pp1LabelSize, font: thaiFontBold });
+        page1.drawText('สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน', { x: 105, y, size: pp1LabelSize, font: thaiFont });
+        y -= 22;
+        page1.drawText('ตำบล/แขวง', { x: 30, y, size: pp1LabelSize, font: thaiFontBold });
+        page1.drawText('ปราสาท', { x: 105, y, size: pp1LabelSize, font: thaiFont });
+        y -= 22;
+        page1.drawText('เขต/อำเภอ', { x: 30, y, size: pp1LabelSize, font: thaiFontBold });
+        page1.drawText('บ้านกรวด', { x: 105, y, size: pp1LabelSize, font: thaiFont });
+        y -= 22;
+        page1.drawText('จังหวัด', { x: 30, y, size: pp1LabelSize, font: thaiFontBold });
+        page1.drawText('บุรีรัมย์', { x: 105, y, size: pp1LabelSize, font: thaiFont });
+        y -= 22;
+        page1.drawText('สำนักงานเขตพื้นที่การศึกษา', { x: 30, y, size: pp1LabelSize, font: thaiFontBold });
+        page1.drawText('ประถมศึกษาบุรีรัมย์ เขต 2', { x: 175, y, size: pp1LabelSize, font: thaiFont });
+        y -= 22;
+        page1.drawText('วันเข้าเรียน', { x: 30, y, size: pp1LabelSize, font: thaiFontBold });
+        page1.drawText('-', { x: 105, y, size: pp1LabelSize, font: thaiFont });
+        y -= 24;
+        page1.drawText('โรงเรียนเดิม', { x: 30, y, size: pp1LabelSize, font: thaiFontBold });
+        page1.drawText('-', { x: 105, y, size: pp1LabelSize, font: thaiFont });
+        y -= 24;
+        page1.drawText('จังหวัด', { x: 30, y, size: pp1LabelSize, font: thaiFontBold });
+        page1.drawText('-', { x: 105, y, size: pp1LabelSize, font: thaiFont });
+        y -= 24;
+        page1.drawText('ชั้นเรียนสุดท้าย', { x: 30, y, size: pp1LabelSize, font: thaiFontBold });
+        page1.drawText('-', { x: 115, y, size: pp1LabelSize, font: thaiFont });
 
         // --- Header Right ---
         y = height - 70;
         const rawName = student.student_name.split(' ');
         const fName = rawName[0] || '';
         const lName = rawName[1] || '';
+        const pp1InfoSize = 16;
 
-        page1.drawText('ชื่อ', { x: 280, y, size: 13, font: thaiFontBold });
-        page1.drawText(fName, { x: 340, y, size: 13, font: thaiFont });
-        y -= 18;
-        page1.drawText('ชื่อสกุล', { x: 280, y, size: 13, font: thaiFontBold });
-        page1.drawText(lName, { x: 340, y, size: 13, font: thaiFont });
-        y -= 18;
-        page1.drawText('เลขประจำตัวนักเรียน', { x: 280, y, size: 13, font: thaiFontBold });
-        page1.drawText(student.student_code, { x: 380, y, size: 13, font: thaiFont });
-        y -= 18;
-        page1.drawText('เลขประจำตัวประชาชน', { x: 280, y, size: 13, font: thaiFontBold });
-        page1.drawText('-', { x: 380, y, size: 13, font: thaiFont });
-        y -= 18;
-        page1.drawText('เกิดวันที่', { x: 280, y, size: 13, font: thaiFontBold });
-        page1.drawText('-', { x: 330, y, size: 13, font: thaiFont });
-        page1.drawText('เดือน', { x: 360, y, size: 13, font: thaiFontBold });
-        page1.drawText('-', { x: 390, y, size: 13, font: thaiFont });
-        page1.drawText('พ.ศ.', { x: 430, y, size: 13, font: thaiFontBold });
-        page1.drawText('-', { x: 450, y, size: 13, font: thaiFont });
-        y -= 18;
-        page1.drawText('เพศ', { x: 280, y, size: 13, font: thaiFontBold });
-        page1.drawText('-', { x: 315, y, size: 13, font: thaiFont });
-        page1.drawText('สัญชาติ', { x: 355, y, size: 13, font: thaiFontBold });
-        page1.drawText('ไทย', { x: 395, y, size: 13, font: thaiFont });
-        page1.drawText('ศาสนา', { x: 435, y, size: 13, font: thaiFontBold });
-        page1.drawText('พุทธ', { x: 465, y, size: 13, font: thaiFont });
-        y -= 18;
-        page1.drawText('ชื่อ-ชื่อสกุลบิดา', { x: 280, y, size: 13, font: thaiFontBold });
-        page1.drawText('-', { x: 360, y, size: 13, font: thaiFont });
-        y -= 18;
-        page1.drawText('ชื่อ-ชื่อสกุลมารดา', { x: 280, y, size: 13, font: thaiFontBold });
-        page1.drawText('-', { x: 360, y, size: 13, font: thaiFont });
+        page1.drawText('ชื่อ', { x: 280, y, size: pp1InfoSize, font: thaiFontBold });
+        page1.drawText(fName, { x: 350, y, size: pp1InfoSize, font: thaiFont });
+        y -= 22;
+        page1.drawText('ชื่อสกุล', { x: 280, y, size: pp1InfoSize, font: thaiFontBold });
+        page1.drawText(lName, { x: 350, y, size: pp1InfoSize, font: thaiFont });
+        y -= 22;
+        page1.drawText('เลขประจำตัวนักเรียน', { x: 280, y, size: pp1InfoSize, font: thaiFontBold });
+        page1.drawText(student.student_code, { x: 400, y, size: pp1InfoSize, font: thaiFont });
+        y -= 22;
+        page1.drawText('เลขประประชาชน', { x: 280, y, size: pp1InfoSize, font: thaiFontBold });
+        page1.drawText('-', { x: 400, y, size: pp1InfoSize, font: thaiFont });
+        y -= 22;
+        page1.drawText('เกิดวันที่', { x: 280, y, size: pp1InfoSize, font: thaiFontBold });
+        page1.drawText('-', { x: 340, y, size: pp1InfoSize, font: thaiFont });
+        page1.drawText('เดือน', { x: 375, y, size: pp1InfoSize, font: thaiFontBold });
+        page1.drawText('-', { x: 415, y, size: pp1InfoSize, font: thaiFont });
+        page1.drawText('พ.ศ.', { x: 455, y, size: pp1InfoSize, font: thaiFontBold });
+        page1.drawText('-', { x: 485, y, size: pp1InfoSize, font: thaiFont });
+        y -= 22;
+        page1.drawText('เพศ', { x: 280, y, size: pp1InfoSize, font: thaiFontBold });
+        page1.drawText('-', { x: 315, y, size: pp1InfoSize, font: thaiFont });
+        page1.drawText('สัญชาติ', { x: 355, y, size: pp1InfoSize, font: thaiFontBold });
+        page1.drawText('ไทย', { x: 405, y, size: pp1InfoSize, font: thaiFont });
+        page1.drawText('ศาสนา', { x: 445, y, size: pp1InfoSize, font: thaiFontBold });
+        page1.drawText('พุทธ', { x: 485, y, size: pp1InfoSize, font: thaiFont });
+        y -= 22;
+        page1.drawText('ชื่อ-ชื่อสกุลบิดา', { x: 280, y, size: pp1InfoSize, font: thaiFontBold });
+        page1.drawText('-', { x: 380, y, size: pp1InfoSize, font: thaiFont });
+        y -= 22;
+        page1.drawText('ชื่อ-ชื่อสกุลมารดา', { x: 280, y, size: pp1InfoSize, font: thaiFontBold });
+        page1.drawText('-', { x: 380, y, size: pp1InfoSize, font: thaiFont });
 
         // Photo Box
         page1.drawRectangle({ x: 500, y: height - 150, width: 70, height: 90, borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
