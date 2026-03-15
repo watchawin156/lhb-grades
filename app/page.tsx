@@ -307,72 +307,77 @@ export default function App() {
     }
   };
 
-  const updateScoreRealtime = async (studentCode: string, semester: number, value: string, subType: 'total' | 'mid' | 'fin' = 'total') => {
-    let newData = [...allData];
-    const existingIndex = newData.findIndex(d =>
-      d.type === 'score' && d.student_code === studentCode &&
-      d.subject_code === selectedSubject.subject_code &&
-      d.class_level === selectedRoom.class_level &&
-      Number(d.year) === Number(selectedYear) &&
-      Number(d.semester) === Number(semester)
-    );
+  const updateScoreRealtime = (studentCode: string, semester: number, value: string, subType: 'total' | 'mid' | 'fin' = 'total') => {
+    const normalizedValue = value.trim();
+    const numValue = normalizedValue === '' ? null : Number(normalizedValue);
 
-    let currentScoreObj = existingIndex >= 0 ? { ...newData[existingIndex] } : {
-      type: 'score', student_code: studentCode, subject_code: selectedSubject.subject_code,
-      subject_name: selectedSubject.subject_name, class_level: selectedRoom.class_level,
-      score: 0, mid_score: null, fin_score: null, max_score: selectedSubject.max_score, semester, year: Number(selectedYear),
-      created_at: new Date().toISOString()
-    };
+    // First, update UI state immediately for "realtime" feel
+    setAllData(prev => {
+      const newData = [...prev];
+      const existingIndex = newData.findIndex(d =>
+        d.type === 'score' && d.student_code === studentCode &&
+        d.subject_code === selectedSubject.subject_code &&
+        d.class_level === selectedRoom.class_level &&
+        Number(d.year) === Number(selectedYear) &&
+        Number(d.semester) === Number(semester)
+      );
 
-    // Normalize: record เก่าอาจไม่มี mid_score/fin_score (undefined) ต้องแปลงเป็น null
-    if (currentScoreObj.mid_score === undefined) currentScoreObj.mid_score = null;
-    if (currentScoreObj.fin_score === undefined) currentScoreObj.fin_score = null;
+      let currentScoreObj = existingIndex >= 0 ? { ...newData[existingIndex] } : {
+        type: 'score', student_code: studentCode, subject_code: selectedSubject.subject_code,
+        subject_name: selectedSubject.subject_name, class_level: selectedRoom.class_level,
+        score: null, mid_score: null, fin_score: null, max_score: selectedSubject.max_score, semester, year: Number(selectedYear),
+        created_at: new Date().toISOString()
+      };
 
-    const numValue = value === '' ? null : Number(value);
+      if (currentScoreObj.mid_score === undefined) currentScoreObj.mid_score = null;
+      if (currentScoreObj.fin_score === undefined) currentScoreObj.fin_score = null;
 
-    if (subType === 'mid') {
-      const { midMax: mMax } = getSubjectRatio(selectedSubject);
-      if (numValue !== null && numValue > mMax) return showToast(`⚠️ คะแนนเก็บเต็ม ${mMax}`);
-      if (numValue !== null && numValue < 0) return;
-      currentScoreObj.mid_score = numValue;
-    } else if (subType === 'fin') {
-      const { finMax: fMax } = getSubjectRatio(selectedSubject);
-      if (numValue !== null && numValue > fMax) return showToast(`⚠️ คะแนนสอบเต็ม ${fMax}`);
-      if (numValue !== null && numValue < 0) return;
-      currentScoreObj.fin_score = numValue;
-    } else {
-      if (numValue !== null && numValue > 50) return showToast('⚠️ คะแนนเต็ม 50');
-      if (numValue !== null && numValue < 0) return;
-      currentScoreObj.score = numValue ?? 0;
-      currentScoreObj.mid_score = null;
-      currentScoreObj.fin_score = null;
-    }
-
-    // Recalculate total if sub-scores exist (ตรวจ null เท่านั้น เพราะ normalize แล้ว)
-    if (currentScoreObj.mid_score !== null || currentScoreObj.fin_score !== null) {
-      currentScoreObj.score = (currentScoreObj.mid_score ?? 0) + (currentScoreObj.fin_score ?? 0);
-    }
-
-    // เช็คว่าควรลบ record หรือไม่ (ถ้าเป็น null ทุกช่อง)
-    const isAllNull = (currentScoreObj.mid_score === null && currentScoreObj.fin_score === null && (subType === 'total' ? numValue === null : currentScoreObj.score === 0));
-
-    if (isAllNull) {
-      if (existingIndex >= 0) {
-        newData.splice(existingIndex, 1);
-        setAllData(newData);
-        if (window.dataSdk) window.dataSdk.delete(currentScoreObj.id || currentScoreObj._id || `${studentCode}_${selectedSubject.subject_code}_${semester}_${selectedYear}`);
+      if (subType === 'mid') {
+        const { midMax: mMax } = getSubjectRatio(selectedSubject);
+        if (numValue !== null && numValue > mMax) { showToast(`⚠️ คะแนนเก็บเต็ม ${mMax}`); return prev; }
+        if (numValue !== null && numValue < 0) return prev;
+        currentScoreObj.mid_score = numValue;
+      } else if (subType === 'fin') {
+        const { finMax: fMax } = getSubjectRatio(selectedSubject);
+        if (numValue !== null && numValue > fMax) { showToast(`⚠️ คะแนนสอบเต็ม ${fMax}`); return prev; }
+        if (numValue !== null && numValue < 0) return prev;
+        currentScoreObj.fin_score = numValue;
+      } else {
+        if (numValue !== null && numValue > 50) { showToast('⚠️ คะแนนเต็ม 50'); return prev; }
+        if (numValue !== null && numValue < 0) return prev;
+        currentScoreObj.score = numValue;
+        currentScoreObj.mid_score = null;
+        currentScoreObj.fin_score = null;
       }
-      return;
-    }
 
-    if (existingIndex >= 0) {
-      newData[existingIndex] = currentScoreObj;
-      if (window.dataSdk) window.dataSdk.update(currentScoreObj);
-    } else {
-      newData.push(currentScoreObj);
-      if (window.dataSdk) window.dataSdk.create(currentScoreObj);
-    }
-    setAllData(newData);
+      if (currentScoreObj.mid_score !== null || currentScoreObj.fin_score !== null) {
+        currentScoreObj.score = (currentScoreObj.mid_score ?? 0) + (currentScoreObj.fin_score ?? 0);
+      } else if (subType !== 'total') {
+        // ในโหมดเก็บ+สอบ ถ้าค่าเป็น null ทั้งคู่ score ต้องเป็น null ไม่ใช่ 0
+        currentScoreObj.score = null;
+      }
+
+      const isAllNull = (currentScoreObj.mid_score === null && currentScoreObj.fin_score === null && currentScoreObj.score === null);
+
+      if (isAllNull) {
+        if (existingIndex >= 0) {
+          const removedItem = newData[existingIndex];
+          newData.splice(existingIndex, 1);
+          if (window.dataSdk) window.dataSdk.delete(removedItem.id || removedItem._id || `${studentCode}_${selectedSubject.subject_code}_${semester}_${selectedYear}`);
+          return newData;
+        }
+        return prev;
+      }
+
+      if (existingIndex >= 0) {
+        newData[existingIndex] = currentScoreObj;
+        if (window.dataSdk) window.dataSdk.update(currentScoreObj);
+      } else {
+        newData.push(currentScoreObj);
+        if (window.dataSdk) window.dataSdk.create(currentScoreObj);
+      }
+      return newData;
+    });
   };
 
   const updateStudentOrder = (studentCode: string, newOrder: string) => {
@@ -897,20 +902,23 @@ export default function App() {
 
           // Vertical lines
           for (let i = 1; i < colX.length - 1; i++) {
-            page.drawLine({ start: { x: colX[i], y: tableStartY }, end: { x: colX[i], y: tableStartY - 35 }, thickness: 0.5, color: rgb(0, 0, 0) });
+            // Visual merge of sem headers by skipping vertical divider in top-half of header
+            const isDividerWithinSem = (i === 3 || i === 5);
+            page.drawLine({
+              start: { x: colX[i], y: isDividerWithinSem ? tableStartY - 17 : tableStartY },
+              end: { x: colX[i], y: tableStartY - 35 },
+              thickness: 0.5, color: rgb(0, 0, 0)
+            });
           }
 
           // Horizontal divider for sem headers
           page.drawLine({ start: { x: colX[2], y: tableStartY - 17 }, end: { x: colX[6], y: tableStartY - 17 }, thickness: 0.5, color: rgb(0, 0, 0) });
-          // Vertical dividers for mid/fin
-          page.drawLine({ start: { x: colX[3], y: tableStartY - 17 }, end: { x: colX[3], y: tableStartY - 35 }, thickness: 0.5, color: rgb(0, 0, 0) });
-          page.drawLine({ start: { x: colX[5], y: tableStartY - 17 }, end: { x: colX[5], y: tableStartY - 35 }, thickness: 0.5, color: rgb(0, 0, 0) });
 
           drawCenteredText(page, 'รหัส/รายวิชา', colX[0], tableStartY - 22, 200, thaiFontBold, 14);
           drawCenteredText(page, 'ชม.', colX[1], tableStartY - 22, 30, thaiFontBold, 12);
 
-          drawCenteredText(page, 'เทอม 1', colX[2], tableStartY - 13, 80, thaiFontBold, 12);
-          drawCenteredText(page, 'เทอม 2', colX[4], tableStartY - 13, 80, thaiFontBold, 12);
+          drawCenteredText(page, 'เทอม 1', colX[2], tableStartY - 14, 80, thaiFontBold, 12);
+          drawCenteredText(page, 'เทอม 2', colX[4], tableStartY - 14, 80, thaiFontBold, 12);
 
           drawCenteredText(page, 'เก็บ', colX[2], tableStartY - 30, 40, thaiFontBold, 10);
           drawCenteredText(page, 'สอบ', colX[3], tableStartY - 30, 40, thaiFontBold, 10);
@@ -1042,21 +1050,34 @@ export default function App() {
         }
 
         // ===== สรุปผลการเรียนท้ายกระดาษ =====
-        y -= 30;
+        y -= 45;
 
-        const allScores = subjects.map(subj => {
+        // คำนวณ GPA แบบถ่วงน้ำหนัก (Weighted GPA)
+        let totalWeightedPoints = 0;
+        let totalCreditsAcrossSubjects = 0;
+        let evaluatedCount = 0;
+
+        subjects.forEach(subj => {
           const s1 = getStudentScore(student.student_code, subj.subject_code, 1);
           const s2 = getStudentScore(student.student_code, subj.subject_code, 2);
-          return s1 !== null && s2 !== null ? Number(s1) + Number(s2) : null;
-        }).filter(s => s !== null) as number[];
+          if (s1 !== null && s2 !== null) {
+            const sum = Number(s1) + Number(s2);
+            const grade = Number(calculateGrade(sum));
+            const credit = Number(subj.credit || 1);
+            if (!isNaN(grade)) {
+              totalWeightedPoints += (grade * credit);
+              totalCreditsAcrossSubjects += credit;
+              evaluatedCount++;
+            }
+          }
+        });
 
-        const avgScore = allScores.length > 0 ? (allScores.reduce((a, b) => a + b, 0) / allScores.length).toFixed(2) : '-';
-        const gpaScores = allScores.map(s => Number(calculateGrade(s))).filter(g => !isNaN(g));
-        const gpa = gpaScores.length > 0 ? (gpaScores.reduce((a, b) => a + b, 0) / gpaScores.length).toFixed(2) : '-';
+        const gpaValue = totalCreditsAcrossSubjects > 0 ? (totalWeightedPoints / totalCreditsAcrossSubjects).toFixed(2) : '0.00';
+        const sumPointsStr = totalWeightedPoints.toFixed(1);
 
-        page.drawRectangle({ x: tableLeft, y: y - 28, width: colWidthSum, height: 28, color: rgb(0.96, 0.96, 0.96), borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
-        drawLeftText(page, `สรุปผลการเรียน:  คะแนนเฉลี่ยรวม ${avgScore} คะแนน    เกรดเฉลี่ย (GPA) ${gpa}    จำนวนวิชาที่ประเมิน ${allScores.length}/${subjects.length} วิชา`, tableLeft, y - 19, thaiFontBold, 10, 8);
-        y -= 28;
+        page.drawRectangle({ x: tableLeft, y: y - 35, width: colWidthSum, height: 35, color: rgb(0.98, 0.98, 0.98), borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
+        drawLeftText(page, `สรุปผลการเรียน:  คะแนนเฉลี่ย ${sumPointsStr}    เกรดเฉลี่ย (GPA) ${gpaValue}    จำนวนวิชาที่ประเมิน ${evaluatedCount}/${subjects.length} วิชา`, tableLeft, y - 24, thaiFontBold, 18, 10);
+        y -= 35;
 
         // ===== ลายเซ็น =====
         const sigY = Math.min(y - 40, 120);
@@ -1452,11 +1473,6 @@ export default function App() {
                           <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-200 ${scoringStyle === 'detailed' ? 'translate-x-5' : ''}`} />
                         </button>
                         <span className="text-[10px] font-bold text-emerald-700">คะแนนเก็บ</span>
-                        {scoringStyle === 'detailed' && selectedSubject && (
-                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                            {currentRatio.midMax}:{currentRatio.finMax}
-                          </span>
-                        )}
                       </div>
 
                       <div className="flex-1 max-w-md mx-2 flex gap-2">
@@ -1711,23 +1727,20 @@ export default function App() {
                     <div className="flex-1 bg-white p-2 flex flex-col min-h-[400px] max-h-[400px]">
                       <ul className="divide-y divide-emerald-50 overflow-y-auto flex-1">
                         {adminSubjects.length > 0 ? adminSubjects.map((sb) => (
-                          <li key={sb.subject_code}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              setSubjectAdminData(sb);
-                              setIsSubjectAdminModalOpen(true);
-                            }}
-                            className="p-2 hover:bg-emerald-50/50 rounded-lg flex flex-col group relative cursor-context-menu"
-                          >
-                            <div className="flex justify-between items-start">
-                              <span className="text-sm font-semibold text-slate-700">{sb.subject_name}</span>
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${sb.subject_type === 'เพิ่มเติม' ? 'bg-blue-100 text-blue-700' : (sb.subject_type === 'กิจกรรม' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700')}`}>
-                                {sb.subject_type || 'พื้นฐาน'}
-                              </span>
+                          <li key={sb.subject_code} className="p-3 hover:bg-emerald-50 rounded-lg flex justify-between items-center group transition-colors">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-bold text-slate-700">{sb.subject_name}</span>
+                              <span className="text-xs text-emerald-600">รหัส: {sb.subject_code} | {sb.credit || 1} ชม. | {sb.subject_type || 'พื้นฐาน'}</span>
                             </div>
-                            <span className="text-xs text-emerald-600 mt-1">
-                              รหัส: {sb.subject_code} | {sb.credit || 1} ชม./นก. | คะแนนเต็ม: {sb.max_score || 100}
-                            </span>
+                            <button
+                              onClick={() => {
+                                setSubjectAdminData(sb);
+                                setIsSubjectAdminModalOpen(true);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-2 bg-emerald-100 text-emerald-700 rounded-md hover:bg-emerald-500 hover:text-white transition-all text-xs font-bold"
+                            >
+                              แก้ไขข้อมูล
+                            </button>
                           </li>
                         )) : <li className="p-4 text-center text-sm text-emerald-400 font-medium mt-10">ไม่มีข้อมูลวิชา</li>}
                       </ul>
@@ -1804,189 +1817,197 @@ export default function App() {
           )}
 
         </div>
-      </main>
+      </main >
 
       {/* Admin Auth Modal */}
-      {showAdminAuth && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
-            <div className="flex flex-col items-center mb-6">
-              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-3">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+      {
+        showAdminAuth && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
+              <div className="flex flex-col items-center mb-6">
+                <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-3">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                </div>
+                <h3 className="text-xl font-bold text-emerald-900">รหัสผ่านผู้ดูแลระบบ</h3>
               </div>
-              <h3 className="text-xl font-bold text-emerald-900">รหัสผ่านผู้ดูแลระบบ</h3>
-            </div>
 
-            <input
-              type="password"
-              value={adminPwd}
-              onChange={e => setAdminPwd(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && verifyAdmin()}
-              placeholder="กรอกรหัสผ่าน"
-              className="w-full px-4 py-3 text-center text-lg tracking-widest border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none font-bold bg-slate-50 mb-4"
-              autoFocus
-            />
+              <input
+                type="password"
+                value={adminPwd}
+                onChange={e => setAdminPwd(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && verifyAdmin()}
+                placeholder="กรอกรหัสผ่าน"
+                className="w-full px-4 py-3 text-center text-lg tracking-widest border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none font-bold bg-slate-50 mb-4"
+                autoFocus
+              />
 
-            <div className="flex gap-3">
-              <button onClick={() => { setShowAdminAuth(false); setAdminPwd(''); }} className="flex-1 py-2.5 text-sm border-2 border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-colors">
-                ยกเลิก
-              </button>
-              <button onClick={verifyAdmin} className="flex-1 py-2.5 text-sm bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors">
-                ยืนยัน
-              </button>
+              <div className="flex gap-3">
+                <button onClick={() => { setShowAdminAuth(false); setAdminPwd(''); }} className="flex-1 py-2.5 text-sm border-2 border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-colors">
+                  ยกเลิก
+                </button>
+                <button onClick={verifyAdmin} className="flex-1 py-2.5 text-sm bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors">
+                  ยืนยัน
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Export Modal */}
-      {isExportModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
-            <h3 className="text-xl font-bold text-emerald-900 mb-1">เลือกการส่งออก</h3>
-            <p className="text-sm font-medium text-emerald-600 mb-6">ข้อมูลของชั้น {selectedRoom?.class_level}</p>
+      {
+        isExportModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+              <h3 className="text-xl font-bold text-emerald-900 mb-1">เลือกการส่งออก</h3>
+              <p className="text-sm font-medium text-emerald-600 mb-6">ข้อมูลของชั้น {selectedRoom?.class_level}</p>
 
-            <div className="space-y-3">
-              <button onClick={() => exportPP6PDF(null, false, pp6Mode)} className="w-full px-4 py-3 text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-2 border-indigo-200 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
-                📄 ส่งออก ปพ.6 (รายงานรายปี)
-              </button>
-              <button onClick={() => exportPP1PDF()} className="w-full px-4 py-3 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 border-2 border-blue-200 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
-                📜 ส่งออก ปพ.1 (ใบระเบียนสะสม)
-              </button>
-              <button onClick={exportExcelAllSubjects} className="w-full px-4 py-3 text-sm bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2 shadow-sm">
-                📊 ส่งออกทุกวิชา (Excel)
-              </button>
-            </div>
-            <button onClick={() => setIsExportModalOpen(false)} className="w-full mt-5 py-2 text-slate-400 hover:text-slate-600 text-sm font-bold transition-colors underline underline-offset-4">
-              ยกเลิก
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Subject Admin Modal (Unlock / Edit / Move) */}
-      {isSubjectAdminModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="bg-emerald-600 px-6 py-4 flex justify-between items-center">
-              <h3 className="text-white font-bold flex items-center gap-2">
-                <svg className="w-5 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                จัดการวิชา {subjectAdminData?.subject_code}
-              </h3>
-              <button onClick={() => setIsSubjectAdminModalOpen(false)} className="text-emerald-100 hover:text-white transition-colors">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div className="bg-amber-50 rounded-xl p-3 border border-amber-100">
-                <p className="text-xs text-amber-700 font-bold mb-1 italic">🔐 ป้องกันการแก้ไขโดยไม่ตั้งใจ</p>
-                <input
-                  type="password"
-                  autoFocus
-                  placeholder="กรอกรหัสผ่าน (Admin)"
-                  value={adminAuthInput}
-                  onChange={(e) => setAdminAuthInput(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border-2 border-amber-200 rounded-lg focus:border-amber-500 outline-none"
-                />
-              </div>
-
-              <div className="space-y-3 pt-2 border-t border-slate-100">
-                <button onClick={unlockSelectedSubject} className="w-full py-2.5 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
-                  🔓 ปลดล็อคการแก้ไขวิชานี้
+              <div className="space-y-3">
+                <button onClick={() => exportPP6PDF(null, false, pp6Mode)} className="w-full px-4 py-3 text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-2 border-indigo-200 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
+                  📄 ส่งออก ปพ.6 (รายงานรายปี)
                 </button>
-
-                <button
-                  onClick={clearAllScoresForSubject}
-                  className="w-full py-2.5 bg-red-50 text-red-600 border-2 border-red-100 hover:bg-red-100 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
-                >
-                  🗑️ ลบคะแนนทั้งหมดของวิชานี้
+                <button onClick={() => exportPP1PDF()} className="w-full px-4 py-3 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 border-2 border-blue-200 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
+                  📜 ส่งออก ปพ.1 (ใบระเบียนสะสม)
                 </button>
-
-                <h4 className="text-xs font-bold text-slate-400 mt-6 px-1 uppercase tracking-wider">ย้ายคะแนน (กรณีครูกรอกผิดวิชา)</h4>
-                {!isMoveAuthorized ? (
-                  <button
-                    onClick={() => {
-                      if (adminAuthInput === '31020177') setIsMoveAuthorized(true);
-                      else showToast('⚠️ รหัสผ่านไม่ถูกต้อง');
-                    }}
-                    className="w-full py-2.5 bg-rose-50 text-rose-700 border-2 border-rose-100 hover:border-rose-300 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
-                  >
-                    🔐 กดเพื่อแสดงส่วนการย้ายคะแนน
-                  </button>
-                ) : (
-                  <div className="bg-rose-50 p-3 rounded-xl border border-rose-100 space-y-2">
-                    <p className="text-[10px] text-rose-600 leading-tight">* ฟังก์ชันนี้จะย้ายคะแนน "ทั้งหมด" ของปีนี้ จากวิชานี้ไปยังรายวิชาอื่นในชั้นเดียวกัน</p>
-                    <div className="flex flex-col gap-2">
-                      <select
-                        value={moveTargetCode}
-                        onChange={(e) => setMoveTargetCode(e.target.value)}
-                        className="w-full px-3 py-2 text-sm border-2 border-rose-200 rounded-lg outline-none bg-white focus:border-rose-500"
-                      >
-                        <option value="">-- เลือกวิชาปลายทาง --</option>
-                        {subjects.filter(s => s.subject_code !== subjectAdminData?.subject_code).map(s => (
-                          <option key={s.subject_code} value={s.subject_code}>
-                            {s.subject_code} - {s.subject_name}
-                          </option>
-                        ))}
-                      </select>
-                      <button onClick={moveScoresToSubject} className="w-full py-2 bg-rose-600 text-white rounded-lg font-bold text-xs hover:bg-rose-700 transition-all shadow-sm">
-                        🚀 ย้ายคะแนนทั้งหมดทันที
-                      </button>
-                    </div>
-                  </div>
-                )}
+                <button onClick={exportExcelAllSubjects} className="w-full px-4 py-3 text-sm bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2 shadow-sm">
+                  📊 ส่งออกทุกวิชา (Excel)
+                </button>
               </div>
-            </div>
-
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-center">
-              <p className="text-[10px] text-slate-400">ระบบรักษาความปลอดภัย ข้อมูลถูก Sync ไปยังระบบ D1 ทันที</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Reorder Modal */}
-      {isReorderModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 flex flex-col max-h-[80vh]">
-            <h3 className="text-xl font-bold text-emerald-900 mb-1">จัดเรียงเลขที่นักเรียน</h3>
-            <p className="text-sm font-medium text-emerald-600 mb-4">ลากรายชื่อเพื่อสลับตำแหน่ง (ลากขึ้น-ลง)</p>
-
-            <ul className="flex-1 overflow-y-auto divide-y divide-slate-100 pr-2">
-              {reorderStudents.map((st, idx) => (
-                <li
-                  key={st.student_code}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, idx)}
-                  onDragOver={(e) => handleDragOver(e, idx)}
-                  onDrop={handleDrop}
-                  onDragEnd={() => setDraggedIdx(null)}
-                  className={`p-3 flex items-center gap-3 bg-white hover:bg-slate-50 cursor-grab active:cursor-grabbing border border-transparent rounded-lg transition-all ${draggedIdx === idx ? 'opacity-50 border-emerald-300 shadow-sm' : ''}`}
-                >
-                  <span className="w-8 h-8 flex items-center justify-center bg-emerald-100 text-emerald-700 font-bold rounded-lg shrink-0">{idx + 1}</span>
-                  <div className="flex-1">
-                    <div className="font-bold text-slate-700 text-sm">{st.student_name}</div>
-                    <div className="text-xs text-slate-400 font-mono">{st.student_code}</div>
-                  </div>
-                  <div className="text-slate-300">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8h16M4 16h16"></path></svg>
-                  </div>
-                </li>
-              ))}
-            </ul>
-
-            <div className="flex gap-3 mt-5 pt-4 border-t border-slate-100">
-              <button onClick={() => setIsReorderModalOpen(false)} className="flex-1 py-2 text-sm border-2 border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl font-bold transition-colors">
+              <button onClick={() => setIsExportModalOpen(false)} className="w-full mt-5 py-2 text-slate-400 hover:text-slate-600 text-sm font-bold transition-colors underline underline-offset-4">
                 ยกเลิก
               </button>
-              <button onClick={saveReorder} className="flex-1 py-2 text-sm bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl font-bold transition-colors">
-                บันทึกเลขที่
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
+
+      {/* Subject Admin Modal (Unlock / Edit / Move) */}
+      {
+        isSubjectAdminModalOpen && (
+          <div className="fixed inset-0 z-[100] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="bg-emerald-600 px-6 py-4 flex justify-between items-center">
+                <h3 className="text-white font-bold flex items-center gap-2">
+                  <svg className="w-5 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                  จัดการวิชา {subjectAdminData?.subject_code}
+                </h3>
+                <button onClick={() => setIsSubjectAdminModalOpen(false)} className="text-emerald-100 hover:text-white transition-colors">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="bg-amber-50 rounded-xl p-3 border border-amber-100">
+                  <p className="text-xs text-amber-700 font-bold mb-1 italic">🔐 ป้องกันการแก้ไขโดยไม่ตั้งใจ</p>
+                  <input
+                    type="password"
+                    autoFocus
+                    placeholder="กรอกรหัสผ่าน (Admin)"
+                    value={adminAuthInput}
+                    onChange={(e) => setAdminAuthInput(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border-2 border-amber-200 rounded-lg focus:border-amber-500 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-3 pt-2 border-t border-slate-100">
+                  <button onClick={unlockSelectedSubject} className="w-full py-2.5 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
+                    🔓 ปลดล็อคการแก้ไขวิชานี้
+                  </button>
+
+                  <button
+                    onClick={clearAllScoresForSubject}
+                    className="w-full py-2.5 bg-red-50 text-red-600 border-2 border-red-100 hover:bg-red-100 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
+                  >
+                    🗑️ ลบคะแนนทั้งหมดของวิชานี้
+                  </button>
+
+                  <h4 className="text-xs font-bold text-slate-400 mt-6 px-1 uppercase tracking-wider">ย้ายคะแนน (กรณีครูกรอกผิดวิชา)</h4>
+                  {!isMoveAuthorized ? (
+                    <button
+                      onClick={() => {
+                        if (adminAuthInput === '31020177') setIsMoveAuthorized(true);
+                        else showToast('⚠️ รหัสผ่านไม่ถูกต้อง');
+                      }}
+                      className="w-full py-2.5 bg-rose-50 text-rose-700 border-2 border-rose-100 hover:border-rose-300 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
+                    >
+                      🔐 กดเพื่อแสดงส่วนการย้ายคะแนน
+                    </button>
+                  ) : (
+                    <div className="bg-rose-50 p-3 rounded-xl border border-rose-100 space-y-2">
+                      <p className="text-[10px] text-rose-600 leading-tight">* ฟังก์ชันนี้จะย้ายคะแนน "ทั้งหมด" ของปีนี้ จากวิชานี้ไปยังรายวิชาอื่นในชั้นเดียวกัน</p>
+                      <div className="flex flex-col gap-2">
+                        <select
+                          value={moveTargetCode}
+                          onChange={(e) => setMoveTargetCode(e.target.value)}
+                          className="w-full px-3 py-2 text-sm border-2 border-rose-200 rounded-lg outline-none bg-white focus:border-rose-500"
+                        >
+                          <option value="">-- เลือกวิชาปลายทาง --</option>
+                          {subjects.filter(s => s.subject_code !== subjectAdminData?.subject_code).map(s => (
+                            <option key={s.subject_code} value={s.subject_code}>
+                              {s.subject_code} - {s.subject_name}
+                            </option>
+                          ))}
+                        </select>
+                        <button onClick={moveScoresToSubject} className="w-full py-2 bg-rose-600 text-white rounded-lg font-bold text-xs hover:bg-rose-700 transition-all shadow-sm">
+                          🚀 ย้ายคะแนนทั้งหมดทันที
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-center">
+                <p className="text-[10px] text-slate-400">ระบบรักษาความปลอดภัย ข้อมูลถูก Sync ไปยังระบบ D1 ทันที</p>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Reorder Modal */}
+      {
+        isReorderModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 flex flex-col max-h-[80vh]">
+              <h3 className="text-xl font-bold text-emerald-900 mb-1">จัดเรียงเลขที่นักเรียน</h3>
+              <p className="text-sm font-medium text-emerald-600 mb-4">ลากรายชื่อเพื่อสลับตำแหน่ง (ลากขึ้น-ลง)</p>
+
+              <ul className="flex-1 overflow-y-auto divide-y divide-slate-100 pr-2">
+                {reorderStudents.map((st, idx) => (
+                  <li
+                    key={st.student_code}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, idx)}
+                    onDragOver={(e) => handleDragOver(e, idx)}
+                    onDrop={handleDrop}
+                    onDragEnd={() => setDraggedIdx(null)}
+                    className={`p-3 flex items-center gap-3 bg-white hover:bg-slate-50 cursor-grab active:cursor-grabbing border border-transparent rounded-lg transition-all ${draggedIdx === idx ? 'opacity-50 border-emerald-300 shadow-sm' : ''}`}
+                  >
+                    <span className="w-8 h-8 flex items-center justify-center bg-emerald-100 text-emerald-700 font-bold rounded-lg shrink-0">{idx + 1}</span>
+                    <div className="flex-1">
+                      <div className="font-bold text-slate-700 text-sm">{st.student_name}</div>
+                      <div className="text-xs text-slate-400 font-mono">{st.student_code}</div>
+                    </div>
+                    <div className="text-slate-300">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8h16M4 16h16"></path></svg>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="flex gap-3 mt-5 pt-4 border-t border-slate-100">
+                <button onClick={() => setIsReorderModalOpen(false)} className="flex-1 py-2 text-sm border-2 border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl font-bold transition-colors">
+                  ยกเลิก
+                </button>
+                <button onClick={saveReorder} className="flex-1 py-2 text-sm bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl font-bold transition-colors">
+                  บันทึกเลขที่
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
 
 
       {/* Student Status Modal */}
@@ -2031,15 +2052,18 @@ export default function App() {
               </button>
             </div>
           </div>
-        )}
+        )
+      }
 
       {/* Toast Notification */}
-      {toast.show && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-2xl shadow-2xl z-[100] animate-in slide-in-from-bottom-4 flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-          <span className="text-sm font-bold">{toast.message}</span>
-        </div>
-      )}
+      {
+        toast.show && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-2xl shadow-2xl z-[100] animate-in slide-in-from-bottom-4 flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+            <span className="text-sm font-bold">{toast.message}</span>
+          </div>
+        )
+      }
     </div >
   );
 }
