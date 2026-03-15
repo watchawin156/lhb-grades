@@ -549,8 +549,12 @@ export default function App() {
       Number(d.semester) === Number(semester)
     );
     if (!scoreItem) return null;
-    if (subType === 'mid') return scoreItem.mid_score;
-    if (subType === 'fin') return scoreItem.fin_score;
+
+    if (subType === 'mid') {
+      // Heal: If mid_score is missing but score exists, use score
+      return (scoreItem.mid_score !== null && scoreItem.mid_score !== undefined) ? scoreItem.mid_score : (scoreItem.fin_score ? null : (scoreItem.score || null));
+    }
+    if (subType === 'fin') return scoreItem.fin_score !== undefined ? scoreItem.fin_score : null;
     return scoreItem.score;
   };
 
@@ -1450,11 +1454,11 @@ export default function App() {
                         )}
                       </div>
 
-                      <div className="flex-1 max-w-md mx-2">
+                      <div className="flex-1 max-w-md mx-2 flex gap-2">
                         <select
                           value={selectedSubject?.subject_code || ''}
                           onChange={(e) => handleSelectSubject(e.target.value)}
-                          className="w-full px-4 py-2 text-sm border-2 border-emerald-200 hover:border-emerald-400 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-bold bg-white text-emerald-800 cursor-pointer transition-colors shadow-sm"
+                          className="flex-1 px-4 py-2 text-sm border-2 border-emerald-200 hover:border-emerald-400 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-bold bg-white text-emerald-800 cursor-pointer transition-colors shadow-sm"
                         >
                           {subjects.length === 0 ? <option value="">ไม่มีวิชา</option> : subjects.map(subj => (
                             <option key={subj.subject_code} value={subj.subject_code}>
@@ -1462,6 +1466,21 @@ export default function App() {
                             </option>
                           ))}
                         </select>
+                        <button
+                          onClick={() => {
+                            const pwd = prompt('กรุณากรอกรหัสผ่าน Admin เพื่อจัดการวิชานี้:');
+                            if (pwd === '31020177') {
+                              setSubjectAdminData(selectedSubject);
+                              setIsSubjectAdminModalOpen(true);
+                            } else if (pwd !== null) {
+                              showToast('⚠️ รหัสผ่านไม่ถูกต้อง');
+                            }
+                          }}
+                          className="p-2 bg-white border-2 border-emerald-200 text-emerald-600 rounded-lg hover:border-emerald-500 hover:bg-emerald-50 transition-all shadow-sm flex items-center justify-center"
+                          title="จัดการ/ปลดล็อค วิชานี้"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        </button>
                       </div>
                       <div className="flex items-center gap-2">
                         <button onClick={() => exportPP6PDF(null, false, 'mode1')} className="px-5 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2 whitespace-nowrap active:scale-95">
@@ -1578,21 +1597,29 @@ export default function App() {
                                   <>
                                     <td className="px-1 py-3 text-center bg-emerald-50/20">
                                       <input type="number" value={mid1 ?? ''} min="0" max={currentRatio.midMax} placeholder="-"
+                                        data-index={index} data-semester={1} data-field="mid"
+                                        onKeyDown={(e) => handleKeyDown(e, index, 1)}
                                         onChange={(e) => updateScoreRealtime(student.student_code, 1, e.target.value, 'mid')}
                                         className="w-10 sm:w-12 px-0.5 py-1 text-xs border border-slate-200 rounded text-center focus:border-emerald-500 outline-none" />
                                     </td>
                                     <td className="px-1 py-3 text-center bg-emerald-50/20 border-r border-emerald-50">
                                       <input type="number" value={fin1 ?? ''} min="0" max={currentRatio.finMax} placeholder="-"
+                                        data-index={index} data-semester={1} data-field="fin"
+                                        onKeyDown={(e) => handleKeyDown(e, index, 1)}
                                         onChange={(e) => updateScoreRealtime(student.student_code, 1, e.target.value, 'fin')}
                                         className="w-10 sm:w-12 px-0.5 py-1 text-xs border border-slate-200 rounded text-center focus:border-emerald-500 outline-none" />
                                     </td>
                                     <td className="px-1 py-3 text-center bg-emerald-50/20">
                                       <input type="number" value={mid2 ?? ''} min="0" max={currentRatio.midMax} placeholder="-"
+                                        data-index={index} data-semester={2} data-field="mid"
+                                        onKeyDown={(e) => handleKeyDown(e, index, 2)}
                                         onChange={(e) => updateScoreRealtime(student.student_code, 2, e.target.value, 'mid')}
                                         className="w-10 sm:w-12 px-0.5 py-1 text-xs border border-slate-200 rounded text-center focus:border-emerald-500 outline-none" />
                                     </td>
                                     <td className="px-1 py-3 text-center bg-emerald-50/20">
                                       <input type="number" value={fin2 ?? ''} min="0" max={currentRatio.finMax} placeholder="-"
+                                        data-index={index} data-semester={2} data-field="fin"
+                                        onKeyDown={(e) => handleKeyDown(e, index, 2)}
                                         onChange={(e) => updateScoreRealtime(student.student_code, 2, e.target.value, 'fin')}
                                         className="w-10 sm:w-12 px-0.5 py-1 text-xs border border-slate-200 rounded text-center focus:border-emerald-500 outline-none" />
                                     </td>
@@ -1679,7 +1706,14 @@ export default function App() {
                     <div className="flex-1 bg-white p-2 flex flex-col min-h-[400px] max-h-[400px]">
                       <ul className="divide-y divide-emerald-50 overflow-y-auto flex-1">
                         {adminSubjects.length > 0 ? adminSubjects.map((sb) => (
-                          <li key={sb.subject_code} className="p-2 hover:bg-emerald-50/50 rounded-lg flex flex-col group relative">
+                          <li key={sb.subject_code}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              setSubjectAdminData(sb);
+                              setIsSubjectAdminModalOpen(true);
+                            }}
+                            className="p-2 hover:bg-emerald-50/50 rounded-lg flex flex-col group relative cursor-context-menu"
+                          >
                             <div className="flex justify-between items-start">
                               <span className="text-sm font-semibold text-slate-700">{sb.subject_name}</span>
                               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${sb.subject_type === 'เพิ่มเติม' ? 'bg-blue-100 text-blue-700' : (sb.subject_type === 'กิจกรรม' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700')}`}>
