@@ -363,7 +363,7 @@ export default function App() {
         if (existingIndex >= 0) {
           const removedItem = newData[existingIndex];
           newData.splice(existingIndex, 1);
-          if (window.dataSdk) window.dataSdk.delete(removedItem.id || removedItem._id || `${studentCode}_${selectedSubject.subject_code}_${semester}_${selectedYear}`);
+          if (window.dataSdk) window.dataSdk.remove(removedItem.id || removedItem._id || `${studentCode}_${selectedSubject.subject_code}_${semester}_${selectedYear}`);
           return newData;
         }
         return prev;
@@ -743,7 +743,7 @@ export default function App() {
     if (window.dataSdk) {
       showToast('กำลังลบข้อมูลจากฐานข้อมูล...');
       for (const s of deletedScores) {
-        try { await window.dataSdk.delete(s.id || s._id); } catch (e) { }
+        try { await window.dataSdk.remove(s.id || s._id); } catch (e) { }
       }
       showToast('✅ ลบคะแนนทั้งหมดเรียบร้อยแล้ว');
     }
@@ -1787,7 +1787,7 @@ export default function App() {
                                         let newData = allData.filter(d => !(d.student_code === st.student_code && d.year === Number(selectedYear)));
                                         setAllData(newData);
                                         if (window.dataSdk) {
-                                          await window.dataSdk.delete(st.id || st._id);
+                                          await window.dataSdk.remove(st.id || st._id);
                                           showToast('ลบข้อมูลถาวรเรียบร้อย');
                                         }
                                       }
