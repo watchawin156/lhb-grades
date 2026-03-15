@@ -1728,19 +1728,86 @@ export default function App() {
                       <ul className="divide-y divide-emerald-50 overflow-y-auto flex-1">
                         {adminSubjects.length > 0 ? adminSubjects.map((sb) => (
                           <li key={sb.subject_code} className="p-3 hover:bg-emerald-50 rounded-lg flex justify-between items-center group transition-colors">
-                            <div className="flex flex-col">
-                              <span className="text-sm font-bold text-slate-700">{sb.subject_name}</span>
-                              <span className="text-xs text-emerald-600">รหัส: {sb.subject_code} | {sb.credit || 1} ชม. | {sb.subject_type || 'พื้นฐาน'}</span>
+                            <div className="flex flex-col w-full px-2">
+                              <div className="flex items-center gap-2 mb-1">
+                                <input
+                                  className="w-20 text-xs font-bold text-emerald-700 bg-transparent border-b border-emerald-200 focus:border-emerald-500 outline-none"
+                                  defaultValue={sb.subject_code}
+                                  onBlur={(e) => {
+                                    if (e.target.value && e.target.value !== sb.subject_code) {
+                                      // Bulk update logic (simple proxy for now to not break too much)
+                                      const newData = [...allData];
+                                      const idx = newData.findIndex(d => d.type === 'subject' && d.subject_code === sb.subject_code && d.class_level === adminSelectedRoom);
+                                      if (idx >= 0) {
+                                        newData[idx].subject_code = e.target.value;
+                                        setAllData(newData);
+                                        if (window.dataSdk) window.dataSdk.update(newData[idx]);
+                                        showToast(`อัปเดตรหัสวิชาเป็น ${e.target.value}`);
+                                      }
+                                    }
+                                  }}
+                                />
+                                <input
+                                  className="flex-1 text-sm font-bold text-slate-700 bg-transparent border-b border-emerald-200 focus:border-emerald-500 outline-none"
+                                  defaultValue={sb.subject_name}
+                                  onBlur={(e) => {
+                                    if (e.target.value && e.target.value !== sb.subject_name) {
+                                      const newData = [...allData];
+                                      const idx = newData.findIndex(d => d.type === 'subject' && d.subject_code === sb.subject_code && d.class_level === adminSelectedRoom);
+                                      if (idx >= 0) {
+                                        newData[idx].subject_name = e.target.value;
+                                        setAllData(newData);
+                                        if (window.dataSdk) window.dataSdk.update(newData[idx]);
+                                        showToast(`อัปเดตชื่อวิชาเป็น ${e.target.value}`);
+                                      }
+                                    }
+                                  }}
+                                />
+                              </div>
+                              <div className="flex gap-4 items-center">
+                                <label className="text-xs text-emerald-600 flex items-center gap-1">
+                                  ประเภท:
+                                  <select
+                                    className="bg-transparent font-bold border-b border-emerald-200 outline-none"
+                                    defaultValue={sb.subject_type || 'พื้นฐาน'}
+                                    onChange={(e) => {
+                                      const newData = [...allData];
+                                      const idx = newData.findIndex(d => d.type === 'subject' && d.subject_code === sb.subject_code && d.class_level === adminSelectedRoom);
+                                      if (idx >= 0) {
+                                        newData[idx].subject_type = e.target.value;
+                                        setAllData(newData);
+                                        if (window.dataSdk) window.dataSdk.update(newData[idx]);
+                                        showToast(`อัปเดตประเภทวิชาเป็น ${e.target.value}`);
+                                      }
+                                    }}
+                                  >
+                                    <option value="พื้นฐาน">พื้นฐาน</option>
+                                    <option value="เพิ่มเติม">เพิ่มเติม</option>
+                                  </select>
+                                </label>
+                                <label className="text-xs text-emerald-600 flex items-center gap-1">
+                                  หน่วยกิต (ชม.):
+                                  <input
+                                    type="number" step="0.5" min="0.5"
+                                    className="w-12 text-center bg-transparent font-bold border-b border-emerald-200 outline-none"
+                                    defaultValue={sb.credit || 1}
+                                    onBlur={(e) => {
+                                      const val = Number(e.target.value);
+                                      if (val && val !== sb.credit) {
+                                        const newData = [...allData];
+                                        const idx = newData.findIndex(d => d.type === 'subject' && d.subject_code === sb.subject_code && d.class_level === adminSelectedRoom);
+                                        if (idx >= 0) {
+                                          newData[idx].credit = val;
+                                          setAllData(newData);
+                                          if (window.dataSdk) window.dataSdk.update(newData[idx]);
+                                          showToast(`อัปเดตหน่วยกิตเป็น ${val}`);
+                                        }
+                                      }
+                                    }}
+                                  />
+                                </label>
+                              </div>
                             </div>
-                            <button
-                              onClick={() => {
-                                setSubjectAdminData(sb);
-                                setIsSubjectAdminModalOpen(true);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 p-2 bg-emerald-100 text-emerald-700 rounded-md hover:bg-emerald-500 hover:text-white transition-all text-xs font-bold"
-                            >
-                              แก้ไขข้อมูล
-                            </button>
                           </li>
                         )) : <li className="p-4 text-center text-sm text-emerald-400 font-medium mt-10">ไม่มีข้อมูลวิชา</li>}
                       </ul>
