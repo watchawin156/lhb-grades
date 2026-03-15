@@ -62,8 +62,6 @@ export default function App() {
 
   // Admin Data State
   const [adminSelectedRoom, setAdminSelectedRoom] = useState('');
-  const [isBulkEditSubjects, setIsBulkEditSubjects] = useState(false);
-  const [bulkSubjectText, setBulkSubjectText] = useState('');
 
   // Modals
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -87,8 +85,6 @@ export default function App() {
   // New states for User Request
   const [scoringStyle, setScoringStyle] = useState<'simple' | 'detailed'>('detailed'); // ค่าเริ่มต้น: เก็บ+สอบ
   const [isMoveAuthorized, setIsMoveAuthorized] = useState(false);
-  const [editingSubjectList, setEditingSubjectList] = useState<any[]>([]);
-  const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
 
   // Helper: คืนค่า ratio เก็บ:สอบ ตามวิชา
   const getSubjectRatio = (subj: any) => {
@@ -117,6 +113,16 @@ export default function App() {
 
   // ============ EFFECTS ============
   useEffect(() => {
+    // Load persisted settings
+    const savedStyle = localStorage.getItem('scoringStyle');
+    if (savedStyle === 'simple' || savedStyle === 'detailed') {
+      setScoringStyle(savedStyle);
+    }
+    const savedPp6Mode = localStorage.getItem('pp6Mode');
+    if (savedPp6Mode === 'mode1' || savedPp6Mode === 'mode2') {
+      setPp6Mode(savedPp6Mode);
+    }
+
     if (typeof window !== 'undefined' && window.dataSdk) {
       window.dataSdk.init({ onDataChanged: (data: any[]) => setAllData([...data]) });
     }
@@ -131,6 +137,15 @@ export default function App() {
       });
     }
   }, []);
+
+  // Persist settings when they change
+  useEffect(() => {
+    localStorage.setItem('scoringStyle', scoringStyle);
+  }, [scoringStyle]);
+
+  useEffect(() => {
+    localStorage.setItem('pp6Mode', pp6Mode);
+  }, [pp6Mode]);
 
   const showToast = (message: string) => {
     setToast({ show: true, message });
@@ -196,12 +211,17 @@ export default function App() {
   const students = useMemo(() => {
     if (!selectedRoom) return [];
     return allData.filter(d =>
-      d.type === 'student' && d.class_level === selectedRoom.class_level && d.year === Number(selectedYear)
+      d.type === 'student' && d.class_level === selectedRoom.class_level && d.year === Number(selectedYear) &&
+      d.status !== 'ย้ายออก' // กรองย้ายออก
     ).sort((a, b) => {
-      const orderA = a.order_index !== undefined ? a.order_index : 9999;
-      const orderB = b.order_index !== undefined ? b.order_index : 9999;
+      // เรียงตามเลขที่ (order_index)
+      const orderA = (a.order_index !== undefined && a.order_index !== null && a.order_index !== 0) ? a.order_index : 9999;
+      const orderB = (b.order_index !== undefined && b.order_index !== null && b.order_index !== 0) ? b.order_index : 9999;
+
       if (orderA !== orderB) return orderA - orderB;
-      return a.student_name.localeCompare(b.student_name, 'th');
+
+      // ถ้าไม่มีเลขที่ หรือเลขที่เท่ากัน ให้เรียงตามรหัสประจำตัว (student_code)
+      return (a.student_code || '').localeCompare(b.student_code || '', 'en');
     });
   }, [allData, selectedRoom, selectedYear]);
 
@@ -212,7 +232,12 @@ export default function App() {
 
   const adminStudents = useMemo(() => {
     return allData.filter(d => d.type === 'student' && d.class_level === adminSelectedRoom && d.year === Number(selectedYear))
-      .sort((a, b) => a.student_name.localeCompare(b.student_name, 'th'));
+      .sort((a, b) => {
+        const orderA = (a.order_index !== undefined && a.order_index !== null && a.order_index !== 0) ? a.order_index : 9999;
+        const orderB = (b.order_index !== undefined && b.order_index !== null && b.order_index !== 0) ? b.order_index : 9999;
+        if (orderA !== orderB) return orderA - orderB;
+        return (a.student_code || '').localeCompare(b.student_code || '', 'en');
+      });
   }, [allData, adminSelectedRoom, selectedYear]);
 
   const adminSubjects = useMemo(() => {
@@ -225,16 +250,33 @@ export default function App() {
     return Array.from(subjectsMap.values());
   }, [allData, adminSelectedRoom, selectedYear]);
 
+  const trashStudents = useMemo(() => {
+    return allData.filter(d => d.type === 'student' && d.status === 'ย้ายออก' && (adminSelectedRoom ? d.class_level === adminSelectedRoom : true) && d.year === Number(selectedYear));
+  }, [allData, adminSelectedRoom, selectedYear]);
+
   // ============ ACTIONS ============
-  const handleSelectRoom = (room: any) => {
+  const handleSelectRoom = async (room: any) => {
     setSelectedRoom(room);
+
+    // อัตโนมัติ: ตรวจสอบและสร้างวิชามาตรฐานหากยังไม่มี
     const roomSubjects = allData.filter(d =>
       d.type === 'subject' &&
       d.class_level === room.class_level &&
       (d.year === Number(selectedYear) || !d.year)
     );
-    if (roomSubjects.length > 0) {
-      setSelectedSubject(roomSubjects[0]);
+
+    let currentSubjects = roomSubjects;
+    if (roomSubjects.length === 0) {
+      const updatedData = await generateStandardSubjectsSilent(room.class_level);
+      currentSubjects = updatedData.filter(d =>
+        d.type === 'subject' &&
+        d.class_level === room.class_level &&
+        (d.year === Number(selectedYear) || !d.year)
+      );
+    }
+
+    if (currentSubjects.length > 0) {
+      setSelectedSubject(currentSubjects[0]);
     } else {
       setSelectedSubject(null);
     }
@@ -271,7 +313,8 @@ export default function App() {
       d.type === 'score' && d.student_code === studentCode &&
       d.subject_code === selectedSubject.subject_code &&
       d.class_level === selectedRoom.class_level &&
-      d.year === Number(selectedYear) && d.semester === semester
+      Number(d.year) === Number(selectedYear) &&
+      Number(d.semester) === Number(semester)
     );
 
     let currentScoreObj = existingIndex >= 0 ? { ...newData[existingIndex] } : {
@@ -310,12 +353,14 @@ export default function App() {
       currentScoreObj.score = (currentScoreObj.mid_score ?? 0) + (currentScoreObj.fin_score ?? 0);
     }
 
-    if (numValue === null && currentScoreObj.mid_score === null && currentScoreObj.fin_score === null && subType === 'total') {
+    // เช็คว่าควรลบ record หรือไม่ (ถ้าเป็น null ทุกช่อง)
+    const isAllNull = (currentScoreObj.mid_score === null && currentScoreObj.fin_score === null && (subType === 'total' ? numValue === null : currentScoreObj.score === 0));
+
+    if (isAllNull) {
       if (existingIndex >= 0) {
         newData.splice(existingIndex, 1);
         setAllData(newData);
-        // Ideally call dataSdk.delete if it exists, otherwise just sync
-        if (window.dataSdk) window.dataSdk.syncAll(newData);
+        if (window.dataSdk) window.dataSdk.delete(currentScoreObj.id || currentScoreObj._id || `${studentCode}_${selectedSubject.subject_code}_${semester}_${selectedYear}`);
       }
       return;
     }
@@ -495,13 +540,13 @@ export default function App() {
   };
 
   const getStudentScore = (studentCode: string, subjCode: string, semester: number, year: number | string | null = null, subType: 'total' | 'mid' | 'fin' = 'total') => {
-    const targetYear = year ? Number(year) : Number(selectedYear);
+    const targetYear = Number(year || selectedYear);
     const scoreItem = allData.find(d =>
       d.type === 'score' &&
       d.student_code === studentCode &&
       d.subject_code === subjCode &&
-      d.year === targetYear &&
-      d.semester === semester
+      Number(d.year) === targetYear &&
+      Number(d.semester) === Number(semester)
     );
     if (!scoreItem) return null;
     if (subType === 'mid') return scoreItem.mid_score;
@@ -610,84 +655,6 @@ export default function App() {
     }
   };
 
-  const startBulkEditSubjects = () => {
-    // โหลดรายวิชาปัจจุบันของห้องที่เลือกมาใส่ใน state สำหรับแก้ไข
-    setEditingSubjectList(adminSubjects.map(s => ({ ...s })));
-    setIsSubjectModalOpen(true);
-  };
-
-  const handleUpdateEditingSubject = (index: number, field: string, value: any) => {
-    const newList = [...editingSubjectList];
-    newList[index] = { ...newList[index], [field]: value };
-
-    // Force Civics/Anti-Corruption to be "เพิ่มเติม"
-    const name = newList[index].subject_name || '';
-    if (name.includes('หน้าที่พลเมือง') || name.includes('การป้องกันการทุจริต') || name.includes('ต้านทุจริต')) {
-      newList[index].subject_type = 'เพิ่มเติม';
-    }
-
-    setEditingSubjectList(newList);
-  };
-
-  const addNewSubjectRow = () => {
-    setEditingSubjectList([...editingSubjectList, {
-      type: 'subject',
-      subject_code: '',
-      subject_name: '',
-      class_level: adminSelectedRoom,
-      max_score: 100,
-      subject_type: 'พื้นฐาน',
-      credit: 1,
-      year: 0
-    }]);
-  };
-
-  const removeSubjectRow = (index: number) => {
-    const newList = [...editingSubjectList];
-    newList.splice(index, 1);
-    setEditingSubjectList(newList);
-  };
-
-  const saveSubjectModal = async () => {
-    if (!adminSelectedRoom) return;
-
-    let newData = [...allData];
-
-    // 1) ลบวิชาเก่าของห้องนี้ออกจาก state
-    const oldSubjects = newData.filter(d => d.type === 'subject' && d.class_level === adminSelectedRoom);
-    newData = newData.filter(d => !(d.type === 'subject' && d.class_level === adminSelectedRoom));
-
-    // 2) ลบจาก SDK ด้วย
-    if (window.dataSdk) {
-      for (const old of oldSubjects) {
-        try { await window.dataSdk.delete(old.id || old._id || old.subject_code); } catch (e) { }
-      }
-    }
-
-    // 3) เพิ่มวิชาใหม่ทีละตัว
-    const validSubjects = editingSubjectList.filter(s => s.subject_code && s.subject_name);
-    for (const s of validSubjects) {
-      const subjectData = {
-        type: 'subject',
-        subject_code: s.subject_code,
-        subject_name: s.subject_name,
-        class_level: adminSelectedRoom,
-        max_score: s.max_score || 100,
-        subject_type: s.subject_type || 'พื้นฐาน',
-        credit: s.credit || 1,
-        year: s.year || 0,
-        created_at: s.created_at || new Date().toISOString()
-      };
-      newData.push(subjectData);
-      if (window.dataSdk) {
-        try { await window.dataSdk.create(subjectData); } catch (e) { }
-      }
-    }
-
-    setAllData(newData);
-    setIsSubjectModalOpen(false);
-    showToast(`✅ บันทึก ${validSubjects.length} วิชาเรียบร้อยแล้ว`);
-  };
 
   const modifySubject = () => {
     if (adminAuthInput !== '31020177') return showToast('⚠️ รหัสผ่านไม่ถูกต้อง');
@@ -811,14 +778,8 @@ export default function App() {
     }
   };
 
-  // สร้างและเพิ่มรายวิชามาตรฐาน ป.1-6 ตามเกณฑ์เวลา/หน่วยกิต (D1)
-  const generateStandardSubjects = async () => {
-    let pwd = prompt('กรุณากรอกรหัสผ่าน Admin เพื่อเตรียมวิชามาตรฐาน:');
-    if (pwd !== '31020177') return showToast('⚠️ รหัสผ่านไม่ถูกต้อง');
-
-    if (!confirm('ยืนยันการเพิ่มวิชามาตรฐาน ป.1-6 พร้อมหน่วยกิต/เวลา (หากซ้ำระบบจะอัปเดตข้อมูล)')) return;
-
-    showToast('กำลังประมวลผล...');
+  // ฟังก์ชันสร้างวิชามาตรฐานแบบอัตโนมัติ (Silent)
+  const generateStandardSubjectsSilent = async (targetClassName: string) => {
     const standardSpecs = [
       { name: 'ภาษาไทย', codePfx: 'ท1', c13: 5, c46: 4 },
       { name: 'คณิตศาสตร์พื้นฐาน', codePfx: 'ค1', c13: 4, c46: 4 },
@@ -829,32 +790,29 @@ export default function App() {
       { name: 'ศิลปะ', codePfx: 'ศ1', c13: 1, c46: 1 },
       { name: 'การงานอาชีพ', codePfx: 'ง1', c13: 1, c46: 2 },
       { name: 'ภาษาอังกฤษพื้นฐาน', codePfx: 'อ1', c13: 5, c46: 4 },
-      // เพิ่มเติม
       { name: 'หน้าที่พลเมือง', codePfx: 'ส1', codeSfx: '201', c13: 1, c46: 1, stype: 'เพิ่มเติม' },
       { name: 'การป้องกันการทุจริต', codePfx: 'ส1', codeSfx: '202', c13: 1, c46: 1, stype: 'เพิ่มเติม' }
     ];
 
     let newData = [...allData];
-    let createdCount = 0;
+    const match = targetClassName.match(/ป\.(\d+)/);
+    if (!match) return newData;
+    const grade = parseInt(match[1]);
 
-    for (let grade = 1; grade <= 6; grade++) {
-      const className = 'ป.' + grade;
-      for (const spec of standardSpecs) {
-        const sfx = spec.codeSfx || '101';
-        const code = spec.codePfx + grade + sfx;
-        const sname = spec.name + ' ' + grade;
-        const credit = grade <= 3 ? spec.c13 : spec.c46;
-        const stype = spec.stype || 'พื้นฐาน';
+    for (const spec of standardSpecs) {
+      const sfx = spec.codeSfx || '101';
+      const code = spec.codePfx + grade + sfx;
+      const sname = spec.name + ' ' + grade;
+      const credit = grade <= 3 ? spec.c13 : spec.c46;
+      const stype = spec.stype || 'พื้นฐาน';
 
-        const existingIdx = newData.findIndex(d => d.type === 'subject' && d.subject_code === code && d.class_level === className);
-        const subjObj = { type: 'subject', subject_code: code, subject_name: sname, class_level: className, max_score: 100, subject_type: stype, credit: credit, year: 0, created_at: new Date().toISOString() };
+      const existingIdx = newData.findIndex(d => d.type === 'subject' && d.subject_code === code && d.class_level === targetClassName);
+      const subjObj = { type: 'subject', subject_code: code, subject_name: sname, class_level: targetClassName, max_score: 100, subject_type: stype, credit: credit, year: 0, created_at: new Date().toISOString() };
 
-        if (existingIdx >= 0) {
-          newData[existingIdx] = { ...newData[existingIdx], ...subjObj };
-        } else {
-          newData.push(subjObj);
-        }
-        createdCount++;
+      if (existingIdx >= 0) {
+        newData[existingIdx] = { ...newData[existingIdx], ...subjObj };
+      } else {
+        newData.push(subjObj);
       }
     }
 
@@ -862,7 +820,7 @@ export default function App() {
     if (window.dataSdk) {
       await window.dataSdk.syncAll(newData);
     }
-    showToast(`✅ อัปเดตวิชามาตรฐาน ป.1-6 และหน่วยกิตเรียบร้อย (${createdCount} รายการ)`);
+    return newData;
   };
 
   // ============ EXPORT ============
@@ -899,116 +857,120 @@ export default function App() {
 
         // ===== ส่วน Header =====
         const headerY = height - 45;
-        drawCenteredText(page, 'แบบรายงานผลพัฒนาคุณภาพผู้เรียนรายบุคคล (ปพ.6)', 0, headerY, width, thaiFontBold, 20);
-        drawCenteredText(page, `โรงเรียน${schoolName}`, 0, headerY - 22, width, thaiFontBold, 18);
+        drawCenteredText(page, 'แบบรายงานผลพัฒนาคุณภาพผู้เรียนรายบุคคล (ปพ.6)', 0, headerY, width, thaiFontBold, 24);
+        drawCenteredText(page, `โรงเรียน${schoolName}`, 0, headerY - 25, width, thaiFontBold, 20);
 
         // ===== ข้อมูลนักเรียน =====
-        const infoY = headerY - 52;
+        const infoY = headerY - 60;
         const leftX = 45;
         const rightInfoX = 340;
 
-        page.drawText('ชื่อ-นามสกุล', { x: leftX, y: infoY, size: 18, font: thaiFontBold });
-        page.drawText(student.student_name, { x: leftX + 72, y: infoY, size: 18, font: thaiFont });
+        page.drawText('ชื่อ-นามสกุล', { x: leftX, y: infoY, size: 20, font: thaiFontBold });
+        page.drawText(student.student_name, { x: leftX + 80, y: infoY, size: 20, font: thaiFont });
 
-        page.drawText('เลขประจำตัว', { x: rightInfoX, y: infoY, size: 18, font: thaiFontBold });
-        page.drawText(student.student_code, { x: rightInfoX + 62, y: infoY, size: 18, font: thaiFont });
+        page.drawText('เลขประจำตัว', { x: rightInfoX, y: infoY, size: 20, font: thaiFontBold });
+        page.drawText(student.student_code, { x: rightInfoX + 70, y: infoY, size: 20, font: thaiFont });
 
-        const infoY2 = infoY - 18;
-        page.drawText('ชั้น', { x: leftX, y: infoY2, size: 18, font: thaiFontBold });
-        page.drawText(selectedRoom.class_level, { x: leftX + 22, y: infoY2, size: 18, font: thaiFont });
+        const infoY2 = infoY - 22;
+        page.drawText('ชั้น', { x: leftX, y: infoY2, size: 20, font: thaiFontBold });
+        page.drawText(selectedRoom.class_level, { x: leftX + 25, y: infoY2, size: 20, font: thaiFont });
 
-        page.drawText('ปีการศึกษา', { x: leftX + 100, y: infoY2, size: 18, font: thaiFontBold });
-        page.drawText(String(selectedYear), { x: leftX + 155, y: infoY2, size: 18, font: thaiFont });
+        page.drawText('ปีการศึกษา', { x: leftX + 110, y: infoY2, size: 20, font: thaiFontBold });
+        page.drawText(String(selectedYear), { x: leftX + 175, y: infoY2, size: 20, font: thaiFont });
 
         // ===== ตาราง (คัดลอกรูปแบบ ปพ.1 เป๊ะ) =====
-        const tableStartY = infoY2 - 20;
-        const tableLeft = 80;
-        const colWidthSum = 400; // ความกว้างรวม
+        const tableStartY = infoY2 - 25;
+        const tableLeft = 50;
+        const colWidthSum = 500; // ขยายความกว้างรวมให้เต็มกระดาษมากขึ้น
 
-        page.drawRectangle({ x: tableLeft, y: tableStartY - 30, width: colWidthSum, height: 30, borderColor: rgb(0, 0, 0), borderWidth: 0.8 });
+        page.drawRectangle({ x: tableLeft, y: tableStartY - 35, width: colWidthSum, height: 35, borderColor: rgb(0, 0, 0), borderWidth: 0.8 });
 
         if (currentMode === 'mode1') {
-          page.drawLine({ start: { x: tableLeft + 160, y: tableStartY }, end: { x: tableLeft + 160, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
-          page.drawLine({ start: { x: tableLeft + 220, y: tableStartY }, end: { x: tableLeft + 220, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
-          page.drawLine({ start: { x: tableLeft + 280, y: tableStartY }, end: { x: tableLeft + 280, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
-          page.drawLine({ start: { x: tableLeft + 340, y: tableStartY }, end: { x: tableLeft + 340, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          // แนวตารางใหม่: ชื่อวิชา(200) | ชม.(30) | เก็บ1(40) | สอบ1(40) | เก็บ2(40) | สอบ2(40) | รวม(55) | เกรด(55)
+          const colX = [0, 200, 230, 270, 310, 350, 390, 445, 500].map(x => tableLeft + x);
 
-          page.drawLine({ start: { x: tableLeft + 160, y: tableStartY - 15 }, end: { x: tableLeft + 280, y: tableStartY - 15 }, thickness: 0.5, color: rgb(0, 0, 0) });
-          page.drawLine({ start: { x: tableLeft + 190, y: tableStartY - 15 }, end: { x: tableLeft + 190, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
-          page.drawLine({ start: { x: tableLeft + 250, y: tableStartY - 15 }, end: { x: tableLeft + 250, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          // Vertical lines
+          for (let i = 1; i < colX.length - 1; i++) {
+            page.drawLine({ start: { x: colX[i], y: tableStartY }, end: { x: colX[i], y: tableStartY - 35 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          }
 
-          drawCenteredText(page, 'รหัส/รายวิชา', tableLeft, tableStartY - 20, 160, thaiFontBold, 12);
-          drawCenteredText(page, 'ภาคเรียนที่ 1', tableLeft + 160, tableStartY - 11, 60, thaiFontBold, 10);
-          drawCenteredText(page, 'ภาคเรียนที่ 2', tableLeft + 220, tableStartY - 11, 60, thaiFontBold, 10);
+          // Horizontal divider for sem headers
+          page.drawLine({ start: { x: colX[2], y: tableStartY - 17 }, end: { x: colX[6], y: tableStartY - 17 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          // Vertical dividers for mid/fin
+          page.drawLine({ start: { x: colX[3], y: tableStartY - 17 }, end: { x: colX[3], y: tableStartY - 35 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          page.drawLine({ start: { x: colX[5], y: tableStartY - 17 }, end: { x: colX[5], y: tableStartY - 35 }, thickness: 0.5, color: rgb(0, 0, 0) });
 
-          drawCenteredText(page, 'เก็บ', tableLeft + 160, tableStartY - 25, 30, thaiFontBold, 9);
-          drawCenteredText(page, 'สอบ', tableLeft + 190, tableStartY - 25, 30, thaiFontBold, 9);
-          drawCenteredText(page, 'เก็บ', tableLeft + 220, tableStartY - 25, 30, thaiFontBold, 9);
-          drawCenteredText(page, 'สอบ', tableLeft + 250, tableStartY - 25, 30, thaiFontBold, 9);
+          drawCenteredText(page, 'รหัส/รายวิชา', colX[0], tableStartY - 22, 200, thaiFontBold, 14);
+          drawCenteredText(page, 'ชม.', colX[1], tableStartY - 22, 30, thaiFontBold, 12);
 
-          drawCenteredText(page, 'รวม', tableLeft + 280, tableStartY - 20, 60, thaiFontBold, 11);
-          drawCenteredText(page, 'ผลการเรียน', tableLeft + 340, tableStartY - 20, 60, thaiFontBold, 11);
+          drawCenteredText(page, 'เทอม 1', colX[2], tableStartY - 13, 80, thaiFontBold, 12);
+          drawCenteredText(page, 'เทอม 2', colX[4], tableStartY - 13, 80, thaiFontBold, 12);
+
+          drawCenteredText(page, 'เก็บ', colX[2], tableStartY - 30, 40, thaiFontBold, 10);
+          drawCenteredText(page, 'สอบ', colX[3], tableStartY - 30, 40, thaiFontBold, 10);
+          drawCenteredText(page, 'เก็บ', colX[4], tableStartY - 30, 40, thaiFontBold, 10);
+          drawCenteredText(page, 'สอบ', colX[5], tableStartY - 30, 40, thaiFontBold, 10);
+
+          drawCenteredText(page, 'รวม', colX[6], tableStartY - 22, 55, thaiFontBold, 13);
+          drawCenteredText(page, 'ผลเรียน', colX[7], tableStartY - 22, 55, thaiFontBold, 13);
         } else {
-          page.drawLine({ start: { x: tableLeft + 160, y: tableStartY }, end: { x: tableLeft + 160, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
-          page.drawLine({ start: { x: tableLeft + 200, y: tableStartY }, end: { x: tableLeft + 200, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
-          page.drawLine({ start: { x: tableLeft + 250, y: tableStartY }, end: { x: tableLeft + 250, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
-          page.drawLine({ start: { x: tableLeft + 300, y: tableStartY }, end: { x: tableLeft + 300, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
-          page.drawLine({ start: { x: tableLeft + 350, y: tableStartY }, end: { x: tableLeft + 350, y: tableStartY - 30 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          // โหมด 2 (เวลาเรียน): ชื่อวิชา(240) | ชม.(50) | ส1(55) | ส2(55) | รวม(50) | ผล(50)
+          const colX = [0, 240, 290, 345, 400, 450, 500].map(x => tableLeft + x);
+          for (let i = 1; i < colX.length - 1; i++) {
+            page.drawLine({ start: { x: colX[i], y: tableStartY }, end: { x: colX[i], y: tableStartY - 35 }, thickness: 0.5, color: rgb(0, 0, 0) });
+          }
 
-          drawCenteredText(page, 'รหัส/รายวิชา', tableLeft, tableStartY - 20, 160, thaiFontBold, 12);
-          drawCenteredText(page, 'เวลา', tableLeft + 160, tableStartY - 14, 40, thaiFontBold, 10);
-          drawCenteredText(page, '(ชม.)', tableLeft + 160, tableStartY - 24, 40, thaiFontBold, 9);
-          drawCenteredText(page, 'ภาคเรียนที่ 1', tableLeft + 200, tableStartY - 20, 50, thaiFontBold, 10);
-          drawCenteredText(page, 'ภาคเรียนที่ 2', tableLeft + 250, tableStartY - 20, 50, thaiFontBold, 10);
-          drawCenteredText(page, 'รวม', tableLeft + 300, tableStartY - 20, 50, thaiFontBold, 11);
-          drawCenteredText(page, 'ผลการเรียน', tableLeft + 350, tableStartY - 20, 50, thaiFontBold, 11);
+          drawCenteredText(page, 'รหัส/รายวิชา', colX[0], tableStartY - 22, 240, thaiFontBold, 14);
+          drawCenteredText(page, 'ชม.', colX[1], tableStartY - 22, 50, thaiFontBold, 14);
+          drawCenteredText(page, 'เทอม 1', colX[2], tableStartY - 22, 55, thaiFontBold, 12);
+          drawCenteredText(page, 'เทอม 2', colX[3], tableStartY - 22, 55, thaiFontBold, 12);
+          drawCenteredText(page, 'รวม', colX[4], tableStartY - 22, 50, thaiFontBold, 13);
+          drawCenteredText(page, 'ผลเรียน', colX[5], tableStartY - 22, 50, thaiFontBold, 13);
         }
 
-        let y = tableStartY - 30;
+        let y = tableStartY - 35;
 
         const baseSubjects = subjects.filter(s => (s.subject_type || 'พื้นฐาน') === 'พื้นฐาน' && !(s.subject_name?.includes('หน้าที่พลเมือง') || s.subject_name?.includes('ทุจริต')));
         const addSubjects = subjects.filter(s => s.subject_type === 'เพิ่มเติม' || s.subject_name?.includes('หน้าที่พลเมือง') || s.subject_name?.includes('ทุจริต'));
         const actSubjects = subjects.filter(s => s.subject_type === 'กิจกรรม');
 
         const drawRow = (subjMapData: any, isHeader = false) => {
-          const rowH = 16;
+          const rowH = 22; // เพิ่มความสูงแถว
           page.drawRectangle({ x: tableLeft, y: y - rowH, width: colWidthSum, height: rowH, borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
 
           if (currentMode === 'mode1') {
-            page.drawLine({ start: { x: tableLeft + 160, y }, end: { x: tableLeft + 160, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
-            page.drawLine({ start: { x: tableLeft + 190, y }, end: { x: tableLeft + 190, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
-            page.drawLine({ start: { x: tableLeft + 220, y }, end: { x: tableLeft + 220, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
-            page.drawLine({ start: { x: tableLeft + 250, y }, end: { x: tableLeft + 250, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
-            page.drawLine({ start: { x: tableLeft + 280, y }, end: { x: tableLeft + 280, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
-            page.drawLine({ start: { x: tableLeft + 340, y }, end: { x: tableLeft + 340, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+            const colX = [0, 200, 230, 270, 310, 350, 390, 445, 500].map(x => tableLeft + x);
+            for (let i = 1; i < colX.length - 1; i++) {
+              page.drawLine({ start: { x: colX[i], y }, end: { x: colX[i], y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+            }
 
             if (isHeader) {
-              drawLeftText(page, subjMapData, tableLeft, y - 12, thaiFontBold, 11, 4);
+              drawLeftText(page, subjMapData, colX[0], y - 16, thaiFontBold, 13, 6);
             } else {
-              drawLeftText(page, `${subjMapData.code} ${subjMapData.name}`, tableLeft, y - 11, thaiFont, 10, 4);
-              drawCenteredText(page, String(subjMapData.m1), tableLeft + 160, y - 11, 30, thaiFont, 10);
-              drawCenteredText(page, String(subjMapData.f1), tableLeft + 190, y - 11, 30, thaiFont, 10);
-              drawCenteredText(page, String(subjMapData.m2), tableLeft + 220, y - 11, 30, thaiFont, 10);
-              drawCenteredText(page, String(subjMapData.f2), tableLeft + 250, y - 11, 30, thaiFont, 10);
-              drawCenteredText(page, String(subjMapData.total), tableLeft + 280, y - 11, 60, thaiFontBold, 10);
-              drawCenteredText(page, String(subjMapData.grade), tableLeft + 340, y - 11, 60, thaiFontBold, 10);
+              drawLeftText(page, `${subjMapData.code} ${subjMapData.name}`, colX[0], y - 16, thaiFont, 12, 6);
+              drawCenteredText(page, String(subjMapData.hours), colX[1], y - 16, 30, thaiFont, 12);
+              drawCenteredText(page, String(subjMapData.m1), colX[2], y - 16, 40, thaiFont, 12);
+              drawCenteredText(page, String(subjMapData.f1), colX[3], y - 16, 40, thaiFont, 12);
+              drawCenteredText(page, String(subjMapData.m2), colX[4], y - 16, 40, thaiFont, 12);
+              drawCenteredText(page, String(subjMapData.f2), colX[5], y - 16, 40, thaiFont, 12);
+              drawCenteredText(page, String(subjMapData.total), colX[6], y - 16, 55, thaiFontBold, 13);
+              drawCenteredText(page, String(subjMapData.grade), colX[7], y - 16, 55, thaiFontBold, 13);
             }
           } else {
-            page.drawLine({ start: { x: tableLeft + 160, y }, end: { x: tableLeft + 160, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
-            page.drawLine({ start: { x: tableLeft + 200, y }, end: { x: tableLeft + 200, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
-            page.drawLine({ start: { x: tableLeft + 250, y }, end: { x: tableLeft + 250, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
-            page.drawLine({ start: { x: tableLeft + 300, y }, end: { x: tableLeft + 300, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
-            page.drawLine({ start: { x: tableLeft + 350, y }, end: { x: tableLeft + 350, y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+            const colX = [0, 240, 290, 345, 400, 450, 500].map(x => tableLeft + x);
+            for (let i = 1; i < colX.length - 1; i++) {
+              page.drawLine({ start: { x: colX[i], y }, end: { x: colX[i], y: y - rowH }, thickness: 0.5, color: rgb(0, 0, 0) });
+            }
 
             if (isHeader) {
-              drawLeftText(page, subjMapData, tableLeft, y - 12, thaiFontBold, 11, 4);
+              drawLeftText(page, subjMapData, colX[0], y - 16, thaiFontBold, 13, 6);
             } else {
-              drawLeftText(page, `${subjMapData.code} ${subjMapData.name}`, tableLeft, y - 11, thaiFont, 10, 4);
-              drawCenteredText(page, String(subjMapData.hours), tableLeft + 160, y - 11, 40, thaiFont, 10);
-              drawCenteredText(page, String(subjMapData.s1), tableLeft + 200, y - 11, 50, thaiFont, 10);
-              drawCenteredText(page, String(subjMapData.s2), tableLeft + 250, y - 11, 50, thaiFont, 10);
-              drawCenteredText(page, String(subjMapData.total), tableLeft + 300, y - 11, 50, thaiFontBold, 10);
-              drawCenteredText(page, String(subjMapData.grade), tableLeft + 350, y - 11, 50, thaiFontBold, 10);
+              drawLeftText(page, `${subjMapData.code} ${subjMapData.name}`, colX[0], y - 16, thaiFont, 12, 6);
+              drawCenteredText(page, String(subjMapData.hours), colX[1], y - 16, 50, thaiFont, 12);
+              drawCenteredText(page, String(subjMapData.s1), colX[2], y - 16, 55, thaiFont, 12);
+              drawCenteredText(page, String(subjMapData.s2), colX[3], y - 16, 55, thaiFont, 12);
+              drawCenteredText(page, String(subjMapData.total), colX[4], y - 16, 50, thaiFontBold, 13);
+              drawCenteredText(page, String(subjMapData.grade), colX[5], y - 16, 50, thaiFontBold, 13);
             }
           }
           y -= rowH;
@@ -1154,35 +1116,35 @@ export default function App() {
         const fontSize = 11;
 
         // --- Header Left ---
-        page1.drawText('โรงเรียน', { x: 30, y, size: fontSize, font: thaiFontBold });
-        page1.drawText(schoolName, { x: 90, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('สังกัด', { x: 30, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน', { x: 90, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('ตำบล/แขวง', { x: 30, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('ปราสาท', { x: 90, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('เขต/อำเภอ', { x: 30, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('บ้านกรวด', { x: 90, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('จังหวัด', { x: 30, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('บุรีรัมย์', { x: 90, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('สำนักงานเขตพื้นที่การศึกษา', { x: 30, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('ประถมศึกษาบุรีรัมย์ เขต 2', { x: 130, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('วันเข้าเรียน', { x: 30, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('-', { x: 90, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('โรงเรียนเดิม', { x: 30, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('-', { x: 90, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('จังหวัด', { x: 30, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('-', { x: 90, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('ชั้นเรียนสุดท้าย', { x: 30, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('-', { x: 90, y, size: fontSize, font: thaiFont });
+        page1.drawText('โรงเรียน', { x: 30, y, size: 13, font: thaiFontBold });
+        page1.drawText(schoolName, { x: 95, y, size: 13, font: thaiFont });
+        y -= 18;
+        page1.drawText('สังกัด', { x: 30, y, size: 13, font: thaiFontBold });
+        page1.drawText('สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน', { x: 95, y, size: 13, font: thaiFont });
+        y -= 18;
+        page1.drawText('ตำบล/แขวง', { x: 30, y, size: 13, font: thaiFontBold });
+        page1.drawText('ปราสาท', { x: 95, y, size: 13, font: thaiFont });
+        y -= 18;
+        page1.drawText('เขต/อำเภอ', { x: 30, y, size: 13, font: thaiFontBold });
+        page1.drawText('บ้านกรวด', { x: 95, y, size: 13, font: thaiFont });
+        y -= 18;
+        page1.drawText('จังหวัด', { x: 30, y, size: 13, font: thaiFontBold });
+        page1.drawText('บุรีรัมย์', { x: 95, y, size: 13, font: thaiFont });
+        y -= 18;
+        page1.drawText('สำนักงานเขตพื้นที่การศึกษา', { x: 30, y, size: 13, font: thaiFontBold });
+        page1.drawText('ประถมศึกษาบุรีรัมย์ เขต 2', { x: 145, y, size: 13, font: thaiFont });
+        y -= 18;
+        page1.drawText('วันเข้าเรียน', { x: 30, y, size: 13, font: thaiFontBold });
+        page1.drawText('-', { x: 95, y, size: 13, font: thaiFont });
+        y -= 20;
+        page1.drawText('โรงเรียนเดิม', { x: 30, y, size: 13, font: thaiFontBold });
+        page1.drawText('-', { x: 95, y, size: 13, font: thaiFont });
+        y -= 20;
+        page1.drawText('จังหวัด', { x: 30, y, size: 13, font: thaiFontBold });
+        page1.drawText('-', { x: 95, y, size: 13, font: thaiFont });
+        y -= 20;
+        page1.drawText('ชั้นเรียนสุดท้าย', { x: 30, y, size: 13, font: thaiFontBold });
+        page1.drawText('-', { x: 105, y, size: 13, font: thaiFont });
 
         // --- Header Right ---
         y = height - 70;
@@ -1190,44 +1152,44 @@ export default function App() {
         const fName = rawName[0] || '';
         const lName = rawName[1] || '';
 
-        page1.drawText('ชื่อ', { x: 280, y, size: fontSize, font: thaiFontBold });
-        page1.drawText(fName, { x: 330, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('ชื่อสกุล', { x: 280, y, size: fontSize, font: thaiFontBold });
-        page1.drawText(lName, { x: 330, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('เลขประจำตัวนักเรียน', { x: 280, y, size: fontSize, font: thaiFontBold });
-        page1.drawText(student.student_code, { x: 360, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('เลขประจำตัวประชาชน', { x: 280, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('-', { x: 360, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('เกิดวันที่', { x: 280, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('-', { x: 320, y, size: fontSize, font: thaiFont });
-        page1.drawText('เดือน', { x: 350, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('-', { x: 380, y, size: fontSize, font: thaiFont });
-        page1.drawText('พ.ศ.', { x: 420, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('-', { x: 440, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('เพศ', { x: 280, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('-', { x: 310, y, size: fontSize, font: thaiFont });
-        page1.drawText('สัญชาติ', { x: 350, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('ไทย', { x: 390, y, size: fontSize, font: thaiFont });
-        page1.drawText('ศาสนา', { x: 430, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('พุทธ', { x: 460, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('ชื่อ-ชื่อสกุลบิดา', { x: 280, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('-', { x: 350, y, size: fontSize, font: thaiFont });
-        y -= 15;
-        page1.drawText('ชื่อ-ชื่อสกุลมารดา', { x: 280, y, size: fontSize, font: thaiFontBold });
-        page1.drawText('-', { x: 350, y, size: fontSize, font: thaiFont });
+        page1.drawText('ชื่อ', { x: 280, y, size: 13, font: thaiFontBold });
+        page1.drawText(fName, { x: 340, y, size: 13, font: thaiFont });
+        y -= 18;
+        page1.drawText('ชื่อสกุล', { x: 280, y, size: 13, font: thaiFontBold });
+        page1.drawText(lName, { x: 340, y, size: 13, font: thaiFont });
+        y -= 18;
+        page1.drawText('เลขประจำตัวนักเรียน', { x: 280, y, size: 13, font: thaiFontBold });
+        page1.drawText(student.student_code, { x: 380, y, size: 13, font: thaiFont });
+        y -= 18;
+        page1.drawText('เลขประจำตัวประชาชน', { x: 280, y, size: 13, font: thaiFontBold });
+        page1.drawText('-', { x: 380, y, size: 13, font: thaiFont });
+        y -= 18;
+        page1.drawText('เกิดวันที่', { x: 280, y, size: 13, font: thaiFontBold });
+        page1.drawText('-', { x: 330, y, size: 13, font: thaiFont });
+        page1.drawText('เดือน', { x: 360, y, size: 13, font: thaiFontBold });
+        page1.drawText('-', { x: 390, y, size: 13, font: thaiFont });
+        page1.drawText('พ.ศ.', { x: 430, y, size: 13, font: thaiFontBold });
+        page1.drawText('-', { x: 450, y, size: 13, font: thaiFont });
+        y -= 18;
+        page1.drawText('เพศ', { x: 280, y, size: 13, font: thaiFontBold });
+        page1.drawText('-', { x: 315, y, size: 13, font: thaiFont });
+        page1.drawText('สัญชาติ', { x: 355, y, size: 13, font: thaiFontBold });
+        page1.drawText('ไทย', { x: 395, y, size: 13, font: thaiFont });
+        page1.drawText('ศาสนา', { x: 435, y, size: 13, font: thaiFontBold });
+        page1.drawText('พุทธ', { x: 465, y, size: 13, font: thaiFont });
+        y -= 18;
+        page1.drawText('ชื่อ-ชื่อสกุลบิดา', { x: 280, y, size: 13, font: thaiFontBold });
+        page1.drawText('-', { x: 360, y, size: 13, font: thaiFont });
+        y -= 18;
+        page1.drawText('ชื่อ-ชื่อสกุลมารดา', { x: 280, y, size: 13, font: thaiFontBold });
+        page1.drawText('-', { x: 360, y, size: 13, font: thaiFont });
 
         // Photo Box
         page1.drawRectangle({ x: 500, y: height - 150, width: 70, height: 90, borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
 
         // --- Table 1 Title ---
-        y = height - 230;
-        page1.drawText('ผลการเรียนรายวิชา', { x: width / 2 - 40, y, size: 14, font: thaiFontBold });
+        y = height - 240;
+        page1.drawText('ผลการเรียนรายวิชา', { x: width / 2 - 45, y, size: 16, font: thaiFontBold });
 
         // --- Table 1 Structure ---
         const tableYStart = y - 10;
@@ -1256,27 +1218,27 @@ export default function App() {
           page1.drawLine({ start: { x: cx + subCol1W + subCol2W, y: tableYStart }, end: { x: cx + subCol1W + subCol2W, y: tableYEnd }, thickness: 0.5, color: rgb(0, 0, 0) });
 
           // Header Texts
-          page1.drawText('รหัส/รายวิชา', { x: cx + 45, y: tableYStart - 25, size: 10, font: thaiFontBold });
+          page1.drawText('รหัส/รายวิชา', { x: cx + 40, y: tableYStart - 25, size: 12, font: thaiFontBold });
 
           // Rotated texts
-          page1.drawText('เวลา(ชั่วโมง)', { x: cx + subCol1W + 13, y: tableYStart - 35, size: 9, font: thaiFontBold, rotate: degrees(90) });
-          page1.drawText('ผลการเรียน', { x: cx + subCol1W + subCol2W + 13, y: tableYStart - 35, size: 9, font: thaiFontBold, rotate: degrees(90) });
+          page1.drawText('เวลา(ชั่วโมง)', { x: cx + subCol1W + 14, y: tableYStart - 35, size: 11, font: thaiFontBold, rotate: degrees(90) });
+          page1.drawText('ผลการเรียน', { x: cx + subCol1W + subCol2W + 14, y: tableYStart - 35, size: 11, font: thaiFontBold, rotate: degrees(90) });
         }
 
         // --- Table 1 Data ---
         for (let c = 0; c < 3; c++) {
-          let curY = tableYStart - headerHeight - 12;
+          let curY = tableYStart - headerHeight - 14;
           const cx = colStartX + (c * colWidth);
           const years = yearsGroups[c];
 
           years.forEach(yr => {
             const gradeLevel = yr - 2560;
-            page1.drawText(`ปีการศึกษา ${yr} ชั้นประถมศึกษาปีที่ ${gradeLevel}`, { x: cx + 2, y: curY, size: 10, font: thaiFontBold });
-            curY -= 12;
+            page1.drawText(`ปีการศึกษา ${yr} ชั้น ป.${gradeLevel}`, { x: cx + 2, y: curY, size: 11, font: thaiFontBold });
+            curY -= 14;
 
             // พื้นฐาน
-            page1.drawText(`รายวิชาพื้นฐาน`, { x: cx + 2, y: curY, size: 10, font: thaiFontBold });
-            curY -= 12;
+            page1.drawText(`รายวิชาพื้นฐาน`, { x: cx + 2, y: curY, size: 11, font: thaiFontBold });
+            curY -= 14;
 
             const baseSubjects = allData.filter(d => d.type === 'subject' && d.class_level.includes(gradeLevel.toString()) && (d.subject_type === 'พื้นฐาน' || (!d.subject_type && !d.subject_name.includes('เพิ่มเติม') && !d.subject_name.includes('กิจกรรม') && !d.subject_name.includes('หน้าที่พลเมือง') && !d.subject_name.includes('ทุจริต'))));
             baseSubjects.forEach(sub => {
@@ -1286,15 +1248,15 @@ export default function App() {
               const grade = total !== null ? calculateGrade(total) : '';
               const hours = (sub.credit || 1) * 40;
 
-              page1.drawText(`${sub.subject_code} ${sub.subject_name.slice(0, 25)}`, { x: cx + 2, y: curY, size: 9, font: thaiFont });
-              page1.drawText(String(hours), { x: cx + subCol1W + 5, y: curY, size: 9, font: thaiFont });
-              page1.drawText(String(grade), { x: cx + subCol1W + subCol2W + 5, y: curY, size: 9, font: thaiFont });
-              curY -= 12;
+              page1.drawText(`${sub.subject_code} ${sub.subject_name.slice(0, 22)}`, { x: cx + 2, y: curY, size: 11, font: thaiFont });
+              page1.drawText(String(hours), { x: cx + subCol1W + 4, y: curY, size: 11, font: thaiFont });
+              page1.drawText(String(grade), { x: cx + subCol1W + subCol2W + 4, y: curY, size: 11, font: thaiFont });
+              curY -= 14;
             });
 
             // เพิ่มเติม
-            page1.drawText(`รายวิชาเพิ่มเติม`, { x: cx + 2, y: curY, size: 10, font: thaiFontBold });
-            curY -= 12;
+            page1.drawText(`รายวิชาเพิ่มเติม`, { x: cx + 2, y: curY, size: 11, font: thaiFontBold });
+            curY -= 14;
 
             const addSubjects = allData.filter(d => d.type === 'subject' && d.class_level.includes(gradeLevel.toString()) && (d.subject_type === 'เพิ่มเติม' || d.subject_name.includes('หน้าที่พลเมือง') || d.subject_name.includes('ทุจริต')));
             addSubjects.forEach(sub => {
@@ -1304,12 +1266,12 @@ export default function App() {
               const grade = total !== null ? calculateGrade(total) : '';
               const hours = (sub.credit || 1) * 40;
 
-              page1.drawText(`${sub.subject_code} ${sub.subject_name.slice(0, 25)}`, { x: cx + 2, y: curY, size: 9, font: thaiFont });
-              page1.drawText(String(hours), { x: cx + subCol1W + 5, y: curY, size: 9, font: thaiFont });
-              page1.drawText(String(grade), { x: cx + subCol1W + subCol2W + 5, y: curY, size: 9, font: thaiFont });
-              curY -= 12;
+              page1.drawText(`${sub.subject_code} ${sub.subject_name.slice(0, 22)}`, { x: cx + 2, y: curY, size: 11, font: thaiFont });
+              page1.drawText(String(hours), { x: cx + subCol1W + 4, y: curY, size: 11, font: thaiFont });
+              page1.drawText(String(grade), { x: cx + subCol1W + subCol2W + 4, y: curY, size: 11, font: thaiFont });
+              curY -= 14;
             });
-            curY -= 5;
+            curY -= 6;
           });
         }
 
@@ -1473,14 +1435,14 @@ export default function App() {
 
                     <div className="w-full lg:flex-1 flex flex-col sm:flex-row gap-3 lg:items-center lg:justify-between">
                       <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-lg border border-emerald-200">
-                        <span className="text-[10px] font-bold text-slate-400">50+50</span>
+                        <span className="text-[10px] font-bold text-slate-400">เทอม</span>
                         <button
                           onClick={() => setScoringStyle(scoringStyle === 'simple' ? 'detailed' : 'simple')}
                           className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${scoringStyle === 'detailed' ? 'bg-emerald-500' : 'bg-slate-300'}`}
                         >
                           <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-200 ${scoringStyle === 'detailed' ? 'translate-x-5' : ''}`} />
                         </button>
-                        <span className="text-[10px] font-bold text-emerald-700">เก็บ+สอบ</span>
+                        <span className="text-[10px] font-bold text-emerald-700">คะแนนเก็บ</span>
                         {scoringStyle === 'detailed' && selectedSubject && (
                           <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                             {currentRatio.midMax}:{currentRatio.finMax}
@@ -1502,21 +1464,11 @@ export default function App() {
                         </select>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-                          <button
-                            onClick={() => setPp6Mode('mode1')}
-                            className={`px-3 py-1.5 text-[10px] sm:text-xs font-bold rounded-md transition-all ${pp6Mode === 'mode1' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                          >ปพ.6 (เก็บ-สอบ)</button>
-                          <button
-                            onClick={() => setPp6Mode('mode2')}
-                            className={`px-3 py-1.5 text-[10px] sm:text-xs font-bold rounded-md transition-all ${pp6Mode === 'mode2' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                          >ปพ.6 (เวลาเรียน)</button>
-                        </div>
-                        <button onClick={() => exportPP6PDF(null, false, pp6Mode)} className="px-5 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2 whitespace-nowrap active:scale-95">
-                          📄 ส่งออก ปพ.6 ทั้งห้อง
+                        <button onClick={() => exportPP6PDF(null, false, 'mode1')} className="px-5 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2 whitespace-nowrap active:scale-95">
+                          📄 ปพ.6
                         </button>
                         <button onClick={() => exportPP1PDF()} className="px-5 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2 whitespace-nowrap active:scale-95">
-                          📜 ส่งออก ปพ.1 ทั้งห้อง
+                          📜 ปพ.1
                         </button>
                       </div>
                     </div>
@@ -1536,14 +1488,13 @@ export default function App() {
                               </>
                             ) : (
                               <>
-                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">{`เก็บ 1 (${currentRatio.midMax})`}</th>
+                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">{`เทอม 1 (${currentRatio.midMax})`}</th>
                                 <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30 border-r border-emerald-100">{`สอบ 1 (${currentRatio.finMax})`}</th>
-                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">{`เก็บ 2 (${currentRatio.midMax})`}</th>
+                                <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">{`เทอม 2 (${currentRatio.midMax})`}</th>
                                 <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50/30">{`สอบ 2 (${currentRatio.finMax})`}</th>
                               </>
                             )}
                             <th className="px-2 sm:px-4 py-3 text-center text-xs sm:text-sm font-bold text-emerald-900 bg-emerald-100/50">รวม / เกรด</th>
-                            <th className="px-2 sm:px-4 py-3 text-center text-xs sm:text-sm font-bold text-emerald-900 bg-emerald-100/50">รายงาน</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-emerald-50">
@@ -1568,18 +1519,27 @@ export default function App() {
                                 className={`hover:bg-emerald-50/40 transition-colors ${isLocked ? 'bg-slate-50/50' : ''}`}
                                 onContextMenu={(e) => {
                                   e.preventDefault();
-                                  setSubjectAdminData(selectedSubject);
-                                  setAdminAuthInput('');
-                                  setMoveTargetCode('');
-                                  setIsSubjectAdminModalOpen(true);
+                                  const pwd = prompt('กรุณากรอกรหัสผ่าน Admin เพื่อแจ้งย้ายออกนักเรียน:');
+                                  if (pwd === '31020177') {
+                                    if (confirm(`ยืนยันการระบุสถานะ "ย้ายออก" ให้คุณ ${student.student_name}?\nชื่อจะหายไปจากหน้านี้และไปอยู่ในถังขยะ Admin`)) {
+                                      // เรียกใช้ฟังก์ชันที่มีอยู่แล้วแต่ปรับให้บันทึกถาวร
+                                      setSelectedStudentStatus(student);
+                                      setTimeout(() => updateStudentStatus('ย้ายออก'), 100);
+                                    }
+                                  } else if (pwd !== null) {
+                                    showToast('⚠️ รหัสผ่านไม่ถูกต้อง');
+                                  }
                                 }}
                               >
                                 <td className="px-2 sm:px-4 py-3">
                                   <input
                                     type="number"
-                                    value={student.order_index ?? index + 1}
+                                    value={student.order_index || ''}
+                                    placeholder={String(index + 1)}
+                                    onDoubleClick={() => updateStudentOrder(student.student_code, '')}
                                     onChange={(e) => updateStudentOrder(student.student_code, e.target.value)}
-                                    className="w-10 sm:w-12 text-center text-xs sm:text-sm font-bold text-emerald-600 bg-transparent border-b border-transparent hover:border-emerald-300 focus:border-emerald-500 focus:outline-none transition-colors"
+                                    className="w-10 sm:w-12 text-center text-xs sm:text-sm font-bold text-emerald-600 bg-transparent border-b border-transparent hover:border-emerald-300 focus:border-emerald-500 focus:outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    title="ดับเบิลคลิกเพื่อล้างเลขที่"
                                   />
                                 </td>
                                 <td className={`px-2 sm:px-4 py-3 text-xs sm:text-sm transition-all select-none cursor-help ${student.status === 'ย้ายออก' ? 'opacity-40 grayscale italic' : ''}`}
@@ -1646,21 +1606,6 @@ export default function App() {
                                     <span className={grade !== null ? (Number(grade) >= 2 ? 'text-emerald-600' : 'text-red-500') : 'text-emerald-300'}>{grade !== null ? grade : '-'}</span>
                                   </div>
                                 </td>
-
-                                <td className="px-2 sm:px-4 py-3 text-center">
-                                  <div className="flex items-center justify-center gap-1">
-                                    <button
-                                      onClick={() => exportPP6PDF(student, false, pp6Mode)}
-                                      className="p-1 px-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded border border-indigo-200 text-[10px] font-bold transition-all shadow-sm"
-                                      title="ส่งออก ปพ.6"
-                                    >📄 ปพ.6</button>
-                                    <button
-                                      onClick={() => exportPP1PDF(student, false)}
-                                      className="p-1 px-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded border border-blue-200 text-[10px] font-bold transition-all shadow-sm"
-                                      title="ส่งออก ปพ.1"
-                                    >📜 ปพ.1</button>
-                                  </div>
-                                </td>
                               </tr>
                             );
                           })}
@@ -1682,7 +1627,7 @@ export default function App() {
                 <label className="text-sm font-bold text-emerald-700">เลือกดูข้อมูลห้องเรียน:</label>
                 <select
                   value={adminSelectedRoom}
-                  onChange={(e) => { setAdminSelectedRoom(e.target.value); setIsBulkEditSubjects(false); }}
+                  onChange={(e) => { setAdminSelectedRoom(e.target.value); }}
                   className="w-48 px-4 py-2 text-sm border-2 border-emerald-200 hover:border-emerald-400 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-bold bg-white text-emerald-800 cursor-pointer transition-colors shadow-sm"
                 >
                   <option value="">-- เลือกห้องเรียน --</option>
@@ -1728,20 +1673,13 @@ export default function App() {
                   <div className="border border-emerald-100 rounded-xl overflow-hidden shadow-sm flex flex-col">
                     <div className="bg-emerald-50 px-4 py-3 border-b border-emerald-100 flex justify-between items-center flex-wrap gap-2">
                       <h3 className="font-bold text-emerald-800">วิชาที่สอน</h3>
-                      <div className="flex gap-2">
-                        <button onClick={generateStandardSubjects} className="text-xs font-bold bg-white border border-emerald-200 text-blue-600 hover:bg-blue-50 px-2.5 py-1 rounded-md transition-colors shadow-sm">
-                          ✨ สร้างวิชามาตรฐาน
-                        </button>
-                        <button onClick={startBulkEditSubjects} className="text-xs font-bold bg-white border border-emerald-200 text-emerald-600 hover:bg-emerald-100 px-3 py-1 rounded-md transition-colors shadow-sm">
-                          ✏️ จัดการ
-                        </button>
-                      </div>
+                      <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-md border border-emerald-200">วิชามาตรฐานอัตโนมัติ</span>
                     </div>
 
                     <div className="flex-1 bg-white p-2 flex flex-col min-h-[400px] max-h-[400px]">
                       <ul className="divide-y divide-emerald-50 overflow-y-auto flex-1">
                         {adminSubjects.length > 0 ? adminSubjects.map((sb) => (
-                          <li key={sb.subject_code} className="p-2 hover:bg-emerald-50/50 rounded-lg flex flex-col">
+                          <li key={sb.subject_code} className="p-2 hover:bg-emerald-50/50 rounded-lg flex flex-col group relative">
                             <div className="flex justify-between items-start">
                               <span className="text-sm font-semibold text-slate-700">{sb.subject_name}</span>
                               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${sb.subject_type === 'เพิ่มเติม' ? 'bg-blue-100 text-blue-700' : (sb.subject_type === 'กิจกรรม' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700')}`}>
@@ -1754,6 +1692,66 @@ export default function App() {
                           </li>
                         )) : <li className="p-4 text-center text-sm text-emerald-400 font-medium mt-10">ไม่มีข้อมูลวิชา</li>}
                       </ul>
+                    </div>
+                  </div>
+
+                  {/* กล่องถังขยะนักเรียน (Trash) */}
+                  <div className="border border-rose-100 rounded-xl overflow-hidden shadow-sm flex flex-col md:col-span-2">
+                    <div className="bg-rose-50 px-4 py-3 border-b border-rose-100 flex justify-between items-center">
+                      <h3 className="font-bold text-rose-800 flex items-center gap-2">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        นักเรียนที่ย้ายออก (ถังขยะ)
+                      </h3>
+                      <span className="text-xs font-bold bg-white border border-rose-200 text-rose-600 px-2 py-1 rounded-md">{trashStudents.length} คน</span>
+                    </div>
+                    <div className="bg-white p-2 min-h-[150px] max-h-[300px] overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold sticky top-0">
+                          <tr>
+                            <th className="px-4 py-2 text-left">รหัส/ชื่อ-นามสกุล</th>
+                            <th className="px-4 py-2 text-left">ชั้นเรียน</th>
+                            <th className="px-4 py-2 text-right">จัดการ</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {trashStudents.length > 0 ? trashStudents.map(st => (
+                            <tr key={st.student_code} className="hover:bg-rose-50/30 transition-colors">
+                              <td className="px-4 py-2">
+                                <div className="font-semibold text-slate-700">{st.student_name}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">{st.student_code}</div>
+                              </td>
+                              <td className="px-4 py-2 text-xs font-medium text-slate-500">{st.class_level}</td>
+                              <td className="px-4 py-2 text-right">
+                                <div className="flex justify-end gap-2">
+                                  <button
+                                    onClick={() => { setSelectedStudentStatus(st); updateStudentStatus('ปกติ'); }}
+                                    className="px-2 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded text-[10px] font-bold hover:bg-emerald-500 hover:text-white transition-all"
+                                  >
+                                    กู้คืน
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      if (confirm(`⚠️ ยืนยันการลบ ${st.student_name} ออกจากระบบถาวร?\nข้อมูลคะแนนทั้งหมดจะถูกลบไปด้วย!`)) {
+                                        let newData = allData.filter(d => !(d.student_code === st.student_code && d.year === Number(selectedYear)));
+                                        setAllData(newData);
+                                        if (window.dataSdk) {
+                                          await window.dataSdk.delete(st.id || st._id);
+                                          showToast('ลบข้อมูลถาวรเรียบร้อย');
+                                        }
+                                      }
+                                    }}
+                                    className="px-2 py-1 bg-rose-50 text-rose-600 border border-rose-100 rounded text-[10px] font-bold hover:bg-rose-500 hover:text-white transition-all"
+                                  >
+                                    ลบถาวร
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )) : (
+                            <tr><td colSpan={3} className="px-4 py-8 text-center text-slate-400 italic">ไม่มีข้อมูลในถังขยะ</td></tr>
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 
@@ -1951,93 +1949,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Subject Management Modal */}
-      {isSubjectModalOpen && (
-        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col" style={{ maxHeight: '85vh' }}>
-            <div className="bg-emerald-600 px-6 py-4 flex justify-between items-center rounded-t-2xl">
-              <h3 className="text-white font-bold text-lg flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-                จัดการรายวิชา — {adminSelectedRoom}
-              </h3>
-              <button onClick={addNewSubjectRow} className="px-4 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm font-bold transition-colors flex items-center gap-1.5">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg> เพิ่มวิชาใหม่
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-auto p-4">
-              <table className="w-full text-sm border-collapse">
-                <thead className="sticky top-0 z-10">
-                  <tr className="bg-emerald-50 text-emerald-800 font-bold border-b-2 border-emerald-100">
-                    <th className="p-3 text-left w-36">รหัสวิชา</th>
-                    <th className="p-3 text-left">ชื่อวิชา</th>
-                    <th className="p-3 text-center w-20">ชม./นก.</th>
-                    <th className="p-3 text-center w-32">ประเภท</th>
-                    <th className="p-3 text-center w-14">ลบ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {editingSubjectList.map((subj, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
-                      <td className="p-2">
-                        <input
-                          value={subj.subject_code}
-                          onChange={(e) => handleUpdateEditingSubject(idx, 'subject_code', e.target.value)}
-                          className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200 outline-none font-mono"
-                          placeholder="ท11101"
-                        />
-                      </td>
-                      <td className="p-2">
-                        <input
-                          value={subj.subject_name}
-                          onChange={(e) => handleUpdateEditingSubject(idx, 'subject_name', e.target.value)}
-                          className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200 outline-none"
-                          placeholder="ภาษาไทย 1"
-                        />
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="number"
-                          value={subj.credit || ''}
-                          onChange={(e) => handleUpdateEditingSubject(idx, 'credit', Number(e.target.value) || 1)}
-                          className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:border-emerald-500 outline-none text-center"
-                        />
-                      </td>
-                      <td className="p-2">
-                        <select
-                          value={subj.subject_type || 'พื้นฐาน'}
-                          onChange={(e) => handleUpdateEditingSubject(idx, 'subject_type', e.target.value)}
-                          className={`w-full px-2 py-1.5 text-sm border rounded-lg focus:border-emerald-500 outline-none bg-white cursor-pointer font-bold ${subj.subject_type === 'เพิ่มเติม' ? 'text-blue-600 border-blue-200' : subj.subject_type === 'กิจกรรม' ? 'text-amber-600 border-amber-200' : 'text-emerald-600 border-slate-200'}`}
-                        >
-                          <option value="พื้นฐาน">พื้นฐาน</option>
-                          <option value="เพิ่มเติม">เพิ่มเติม</option>
-                          <option value="กิจกรรม">กิจกรรม</option>
-                        </select>
-                      </td>
-                      <td className="p-2 text-center">
-                        <button onClick={() => removeSubjectRow(idx)} className="text-slate-300 hover:text-red-500 p-1 transition-colors opacity-0 group-hover:opacity-100">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {editingSubjectList.length === 0 && (
-                    <tr><td colSpan={5} className="text-center py-12 text-slate-400 font-medium">ยังไม่มีวิชา — กดปุ่ม "เพิ่มวิชาใหม่" ด้านบน</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3 rounded-b-2xl">
-              <button onClick={() => setIsSubjectModalOpen(false)} className="flex-1 py-2.5 text-slate-500 font-bold border-2 border-slate-200 rounded-xl hover:bg-white transition-colors">ยกเลิก</button>
-              <button onClick={saveSubjectModal} className="flex-1 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg> บันทึกข้อมูลทั้งหมด
-              </button>
-            </div>
-          </div>
-        </div>
-      )
-      }
 
       {/* Student Status Modal */}
       {
